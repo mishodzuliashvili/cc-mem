@@ -18,10 +18,10 @@ const toEdge = (e) => ({
   from: e.src,
   to: e.dst,
   value: e.weight,
-  label: e.kind !== 'related' ? e.kind : '',
+  // kind shows on hover (tooltip) instead of as an always-on label — keeps the
+  // graph uncluttered. related/causal/co-used/part-of = the relationship type.
   title: `${e.kind} · w=${e.weight.toFixed(2)}`,
   color: { color: '#39414d', highlight: '#7ee787' },
-  font: { color: '#6b7785', size: 10 },
 })
 
 export default function GraphView({ onOpen, tick }) {
