@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# cc-mem runtime
+*.db
+*.db-wal
+*.db-shm
+
+# OS
+.DS_Store

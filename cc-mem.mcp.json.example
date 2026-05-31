@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cc-mem": {
+      "command": "/Users/macbook/Desktop/StraightForks/cc-mem/.venv/bin/python",
+      "args": ["/Users/macbook/Desktop/StraightForks/cc-mem/mcp_server.py"],
+      "env": {
+        "CC_MEM_EMBEDDER": "local",
+        "CC_MEM_DB": "/Users/macbook/.claude-cc-mem/memory.db"
+      }
+    }
+  }
+}

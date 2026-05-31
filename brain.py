@@ -1,0 +1,309 @@
+"""The Brain: one facade over two tiers of memory.
+
+  - GLOBAL  — your private, cross-project knowledge in ~/.claude-cc-mem (SQLite).
+  - PROJECT — the current repo's shared, git-committed memory (files via
+              ProjectMemory), isolated to that repo.
+
+Node ids are namespaced strings so the tiers never collide:
+    g:<int>     a global node
+    p:<uuid>    a project node
+
+Default recall = global + the current project (never other projects), which is
+the isolation the hybrid model promises. Both the MCP server and the web API go
+through this class so they behave identically.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from graph_memory import GraphMemory, default_db_path
+from project import ProjectMemory, find_repo_root
+
+
+def _enc_g(i) -> str:
+    return f"g:{i}"
+
+
+def _enc_p(u) -> str:
+    return f"p:{u}"
+
+
+def parse_id(node_id: str):
+    """'g:5' -> ('g', 5) ; 'p:ab12' -> ('p', 'ab12'). Bare ints assumed global."""
+    s = str(node_id)
+    if s.startswith("g:"):
+        return "g", int(s[2:])
+    if s.startswith("p:"):
+        return "p", s[2:]
+    return "g", int(s)  # tolerate a bare global int
+
+
+class Brain:
+    def __init__(self, cwd: Path | None = None, global_db: str | Path | None = None):
+        self.global_store = GraphMemory(global_db or default_db_path())
+        self._repo = find_repo_root(cwd)
+        self.project = ProjectMemory(self._repo) if self._repo else None
+
+    def close(self):
+        self.global_store.close()
+
+    def reload_project_if_changed(self) -> bool:
+        """Rebuild the project store from files if they changed on disk (a
+        teammate pulled, or a Claude session wrote a project memory). Cheap
+        no-op when nothing changed. Returns True if it reloaded."""
+        if not self._repo or not self.project:
+            return False
+        sig = self.project.signature()
+        if sig != getattr(self, "_proj_sig", None):
+            self.project = ProjectMemory(self._repo)
+            self._proj_sig = self.project.signature()
+            return True
+        return False
+
+    def project_signature(self) -> str:
+        return self.project.signature() if self.project else ""
+
+    # ── context ───────────────────────────────────────────────────────────────
+    def context(self) -> dict:
+        return {
+            "global_db": str(self.global_store.path),
+            "project_active": self.project is not None,
+            "project_key": self.project.key if self.project else None,
+            "project_dir": str(self.project.dir) if self.project else None,
+        }
+
+    # ── writes ──────────────────────────────────────────────────────────────
+    # cosine; above this an insert likely duplicates an existing memory. Advisory:
+    # the agent gets the candidates and can reconcile (update) or force a new insert.
+    # Tuned for all-MiniLM-L6-v2 (near-dups ~0.83, distinct ~0.1). Override via env.
+    DUP_THRESHOLD = float(os.environ.get("CC_MEM_DUP_THRESHOLD", "0.78"))
+
+    def _duplicates(self, text, scope):
+        """Near-duplicate candidates in the target tier (so insert can steer
+        toward update instead of piling up copies)."""
+        cands = self.search(text, k=3, scope="project" if scope == "project" else "global")
+        return [c for c in cands
+                if c.get("similarity", c.get("score", 0)) >= self.DUP_THRESHOLD]
+
+    def insert(self, content, summary="", label="", importance=1.0, links=None,
+               scope="global", sources="", confidence=1.0, type="fact",
+               force=False) -> dict:
+        if scope == "project" and not self.project:
+            return {"ok": False, "error": "no git repo here — project scope "
+                    "unavailable. Use scope='global', or run inside a repo."}
+        if not force:
+            probe = " ".join(p for p in (label, summary, content) if p)
+            dups = self._duplicates(probe, scope)
+            if dups:
+                return {"ok": False, "reason": "possible_duplicate",
+                        "duplicate_candidates": dups,
+                        "hint": "A very similar memory already exists. Prefer "
+                        "memory_update on one of these (reconcile in place); or "
+                        "re-insert with force=true if this is genuinely new/distinct."}
+        if scope == "project":
+            plinks = [self._strip(l) for l in (links or [])]
+            uid = self.project.insert(content, summary, label, importance,
+                                      plinks, sources, confidence, type=type)
+            return {"ok": True, "id": _enc_p(uid), "scope": "project",
+                    "project": self.project.key}
+        glinks = [self._strip_global(l) for l in (links or [])]
+        nid = self.global_store.insert(content, summary, label, importance,
+                                       glinks, scope="global", sources=sources,
+                                       confidence=confidence, type=type)
+        return {"ok": True, "id": _enc_g(nid), "scope": "global"}
+
+    @staticmethod
+    def _strip(link):
+        """For a project link, the target id may be 'p:uid' or bare uid."""
+        if isinstance(link, (list, tuple)):
+            t, *rest = link
+            _, raw = parse_id(t)
+            return [raw, *rest]
+        _, raw = parse_id(link)
+        return raw
+
+    @staticmethod
+    def _strip_global(link):
+        if isinstance(link, (list, tuple)):
+            t, *rest = link
+            _, raw = parse_id(t)
+            return [raw, *rest]
+        _, raw = parse_id(link)
+        return raw
+
+    def update(self, node_id, **fields):
+        tier, raw = parse_id(node_id)
+        if tier == "p":
+            if not self.project:
+                return None
+            node = self.project.update(raw, **fields)
+            return self._wrap(node, "p") if node else None
+        node = self.global_store.update_node(raw, **fields)
+        return self._wrap(node, "g") if node else None
+
+    def delete(self, node_id) -> bool:
+        tier, raw = parse_id(node_id)
+        if tier == "p":
+            return bool(self.project and self.project.delete(raw))
+        return self.global_store.delete_node(raw)
+
+    def link(self, a, b, kind="related", weight=1.0):
+        ta, ra = parse_id(a)
+        tb, rb = parse_id(b)
+        if ta != tb:
+            return {"ok": False, "error": "cannot link across global/project tiers"}
+        if ta == "p":
+            return self.project.link(ra, rb, kind, weight) if self.project else {"ok": False}
+        return self.global_store.link(ra, rb, kind, weight)
+
+    def unlink(self, a, b, kind=None):
+        ta, ra = parse_id(a)
+        tb, rb = parse_id(b)
+        if ta != tb:
+            return {"ok": False, "error": "cannot unlink across tiers"}
+        if ta == "p":
+            removed = self.project.unlink(ra, rb, kind) if self.project else 0
+        else:
+            removed = self.global_store.unlink(ra, rb, kind)
+        return {"ok": True, "removed": removed}
+
+    # ── reads ────────────────────────────────────────────────────────────────
+    def get(self, node_id):
+        tier, raw = parse_id(node_id)
+        if tier == "p":
+            node = self.project.get(raw) if self.project else None
+            if not node:
+                return None
+            node = self._wrap(node, "p")
+            node["neighbors"] = [{**nb, "id": _enc_p(nb["id"])}
+                                 for nb in node.get("neighbors", [])]
+            return node
+        node = self.global_store.get(raw)
+        if not node:
+            return None
+        node = self._wrap(node, "g")
+        node["neighbors"] = [
+            {**nb, "id": _enc_g(nb["id"])}
+            for nb in self.global_store.expand(raw)["neighbors"]
+        ]
+        return node
+
+    def get_many(self, ids):
+        """Fetch several full nodes in one call. Returns them in request order,
+        skipping any that don't exist. Lets a caller (or a retrieval subagent)
+        pull a whole relevant cluster at once instead of one round-trip each."""
+        out = []
+        for nid in ids:
+            node = self.get(nid)
+            if node:
+                out.append(node)
+        return out
+
+    def recall(self, query, k=6, full=3, scope="auto"):
+        """One-shot 'gather the relevant neighborhood': run the cold-start search,
+        then return compact briefs for the top `k` AND the full content of the top
+        `full` — so the caller gets multiple related nodes together, budget-bounded,
+        without a brief->get round-trip per node."""
+        hits = self.search(query, k, scope=scope)
+        full_nodes = self.get_many([h["id"] for h in hits[:full]])
+        return {"briefs": hits, "full": full_nodes}
+
+    def search(self, query, k=10, scope="auto"):
+        """scope: 'auto' = global + current project (default), 'global', 'project',
+        or 'all' (same as auto here — there's only one project loaded)."""
+        hits = []
+        if scope in ("auto", "all", "global"):
+            for h in self.global_store.search(query, k):
+                hits.append({**h, "id": _enc_g(h["id"]), "tier": "global"})
+        if scope in ("auto", "all", "project") and self.project:
+            for h in self.project.search(query, k):
+                hits.append({**h, "id": _enc_p(h["id"]), "tier": "project"})
+        hits.sort(key=lambda h: h.get("score", 0), reverse=True)
+        return hits[:k]
+
+    def search_neighbors(self, anchor_id, query, k=5, hops=3):
+        tier, raw = parse_id(anchor_id)
+        if tier == "p":
+            if not self.project:
+                return []
+            hits = self.project.store.search_neighbors(
+                self.project.uid2int.get(raw, -1), query, k, hops)
+            return [{**h, "id": _enc_p(self.project.int2uid.get(h["id"], h["id"])),
+                     "tier": "project"} for h in hits]
+        return [{**h, "id": _enc_g(h["id"]), "tier": "global"}
+                for h in self.global_store.search_neighbors(raw, query, k, hops)]
+
+    def expand(self, node_id):
+        tier, raw = parse_id(node_id)
+        if tier == "p":
+            if not self.project:
+                return {"id": node_id, "exists": False, "neighbors": []}
+            nbs = (self.project._neighbors(raw)
+                   if raw in self.project.uid2int else [])
+            return {"id": node_id, "exists": raw in self.project.uid2int,
+                    "neighbors": [{**nb, "id": _enc_p(nb["id"])} for nb in nbs]}
+        exp = self.global_store.expand(raw)
+        exp["id"] = node_id
+        exp["neighbors"] = [{**nb, "id": _enc_g(nb["id"])} for nb in exp["neighbors"]]
+        return exp
+
+    # ── for the web app ───────────────────────────────────────────────────────
+    def list_nodes(self, q="", scope="", sort="id", order="desc"):
+        rows = []
+        if scope in ("", "global"):
+            for r in self.global_store.db.execute(
+                    "SELECT id,label,summary,scope,type,project,importance,access_count,"
+                    "confidence,created_at,last_accessed FROM nodes"):
+                rows.append({**dict(r), "id": _enc_g(r["id"]), "tier": "global"})
+        if scope in ("", "project") and self.project:
+            for r in self.project.list_nodes():
+                rows.append({**r, "id": _enc_p(r["id"]), "tier": "project",
+                             "last_accessed": r.get("created_at")})
+        if q:
+            ql = q.lower()
+            rows = [r for r in rows if ql in (r.get("label", "") or "").lower()
+                    or ql in (r.get("summary", "") or "").lower()]
+        rev = order != "asc"
+        rows.sort(key=lambda r: (r.get(sort) if sort in r else r.get("created_at", 0)) or 0,
+                  reverse=rev)
+        return {"nodes": rows, "shown": len(rows), "total": len(rows)}
+
+    def graph(self):
+        nodes, edges = [], []
+        for r in self.global_store.db.execute(
+                "SELECT id,label,summary,scope,type,importance,access_count FROM nodes"):
+            nodes.append({**dict(r), "id": _enc_g(r["id"]), "tier": "global"})
+        seen = {}
+        for r in self.global_store.db.execute("SELECT src,dst,kind,weight FROM edges"):
+            a, b = sorted((r["src"], r["dst"]))
+            key = (a, b, r["kind"])
+            if key not in seen or r["weight"] > seen[key]["weight"]:
+                seen[key] = {"src": _enc_g(a), "dst": _enc_g(b),
+                             "kind": r["kind"], "weight": r["weight"]}
+        edges.extend(seen.values())
+        if self.project:
+            pg = self.project.graph()
+            for n in pg["nodes"]:
+                nodes.append({**n, "id": _enc_p(n["id"]), "tier": "project"})
+            for e in pg["edges"]:
+                edges.append({**e, "src": _enc_p(e["src"]), "dst": _enc_p(e["dst"])})
+        return {"nodes": nodes, "edges": edges}
+
+    def stats(self):
+        g = self.global_store.stats()
+        out = {"global_nodes": g["nodes"], "global_edges": g["edges"],
+               "project_active": self.project is not None,
+               "project_key": self.project.key if self.project else None,
+               "project_nodes": len(self.project.uid2int) if self.project else 0}
+        out["nodes"] = out["global_nodes"] + out["project_nodes"]
+        out["edges"] = g["edges"]
+        out["by_scope"] = {"global": out["global_nodes"], "project": out["project_nodes"]}
+        return out
+
+    @staticmethod
+    def _wrap(node, tier):
+        if node and "id" in node:
+            node = {**node, "id": (_enc_p if tier == "p" else _enc_g)(node["id"])}
+        return node

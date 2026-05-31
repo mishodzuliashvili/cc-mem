@@ -1,0 +1,4 @@
+# Only the LOCAL semantic embedder needs a dependency; everything else
+# (store, MCP server, web backend) is pure Python stdlib.
+# Installed into .venv by `python3 setup.py deps`.
+sentence-transformers
