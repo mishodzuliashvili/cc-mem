@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     sources       TEXT NOT NULL DEFAULT '',
     confidence    REAL NOT NULL DEFAULT 1.0,
     last_verified REAL,
+    verified_by   TEXT NOT NULL DEFAULT '',
     embedding     BLOB NOT NULL
 );
 
@@ -118,6 +119,8 @@ class GraphMemory:
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(nodes)")}
         if "type" not in cols:
             self.db.execute("ALTER TABLE nodes ADD COLUMN type TEXT NOT NULL DEFAULT 'fact'")
+        if "verified_by" not in cols:
+            self.db.execute("ALTER TABLE nodes ADD COLUMN verified_by TEXT NOT NULL DEFAULT ''")
 
     def _ensure_dim(self) -> None:
         """Verify the DB's stored vectors match the active embedder's dimension,
@@ -161,6 +164,7 @@ class GraphMemory:
         sources: str = "",
         confidence: float = 1.0,
         type: str = "fact",
+        verified_by: str = "",
     ) -> int:
         """Write a node + its vector + its links atomically. Returns node id.
 
@@ -175,10 +179,11 @@ class GraphMemory:
             """INSERT INTO nodes
                (content, summary, label, importance, type, project, scope,
                 created_at, last_accessed, access_count, sources, confidence,
-                last_verified, embedding)
-               VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?)""",
+                last_verified, verified_by, embedding)
+               VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)""",
             (content, summary, label, importance, type, project, scope,
-             now, now, sources, confidence, now, _pack(vec)),
+             now, now, sources, confidence,
+             now if verified_by else None, verified_by, _pack(vec)),
         )
         node_id = int(cur.lastrowid or 0)
 
@@ -201,7 +206,8 @@ class GraphMemory:
         if not row:
             return None
         allowed = {"content", "summary", "label", "importance", "scope",
-                   "project", "confidence", "sources", "type"}
+                   "project", "confidence", "sources", "type",
+                   "verified_by", "last_verified"}
         merged = {k: row[k] for k in allowed}
         for k, v in fields.items():
             if k in allowed and v is not None:
@@ -473,6 +479,7 @@ class GraphMemory:
             "sources": row["sources"],
             "confidence": row["confidence"],
             "last_verified": row["last_verified"],
+            "verified_by": row["verified_by"],
         }
 
 

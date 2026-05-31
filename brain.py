@@ -89,7 +89,7 @@ class Brain:
 
     def insert(self, content, summary="", label="", importance=1.0, links=None,
                scope="global", sources="", confidence=1.0, type="fact",
-               force=False) -> dict:
+               force=False, verify=None) -> dict:
         if scope == "project" and not self.project:
             return {"ok": False, "error": "no git repo here — project scope "
                     "unavailable. Use scope='global', or run inside a repo."}
@@ -102,17 +102,53 @@ class Brain:
                         "hint": "A very similar memory already exists. Prefer "
                         "memory_update on one of these (reconcile in place); or "
                         "re-insert with force=true if this is genuinely new/distinct."}
+        # Verification gate: if a check command is given, it must pass to persist.
+        verified_by = ""
+        if verify:
+            from runner import run
+            res = run(verify, cwd=self._repo or Path.cwd())
+            if not res["ok"]:
+                return {"ok": False, "reason": "verification_failed", "command": verify,
+                        "exit_code": res["exit_code"], "output": res["output"],
+                        "hint": "The check command failed, so nothing was saved. Fix "
+                        "the claim or the command, then retry."}
+            verified_by = verify
         if scope == "project":
             plinks = [self._strip(l) for l in (links or [])]
             uid = self.project.insert(content, summary, label, importance,
-                                      plinks, sources, confidence, type=type)
+                                      plinks, sources, confidence, type=type,
+                                      verified_by=verified_by)
             return {"ok": True, "id": _enc_p(uid), "scope": "project",
-                    "project": self.project.key}
+                    "project": self.project.key, "verified": bool(verified_by)}
         glinks = [self._strip_global(l) for l in (links or [])]
         nid = self.global_store.insert(content, summary, label, importance,
                                        glinks, scope="global", sources=sources,
-                                       confidence=confidence, type=type)
-        return {"ok": True, "id": _enc_g(nid), "scope": "global"}
+                                       confidence=confidence, type=type,
+                                       verified_by=verified_by)
+        return {"ok": True, "id": _enc_g(nid), "scope": "global",
+                "verified": bool(verified_by)}
+
+    def verify(self, node_id) -> dict:
+        """Re-run the command stored in a node's verified_by. On pass, refresh
+        last_verified; on fail, drop confidence and flag it. Keeps facts honest
+        over time instead of letting them rot."""
+        from runner import run
+        node = self.get(node_id)
+        if not node:
+            return {"ok": False, "error": "not found"}
+        cmd = node.get("verified_by") or ""
+        if not cmd:
+            return {"ok": False, "error": "no verification command stored on this node"}
+        res = run(cmd, cwd=self._repo or Path.cwd())
+        now = self.global_store._clock()
+        if res["ok"]:
+            self.update(node_id, last_verified=now)
+            return {"ok": True, "verified": True, "command": cmd, "output": res["output"]}
+        # failed re-verification: halve confidence, flag in sources
+        self.update(node_id, confidence=max(0.0, (node.get("confidence") or 1.0) * 0.5),
+                    sources=(node.get("sources") or "") + f" [re-verify FAILED {cmd}]")
+        return {"ok": True, "verified": False, "command": cmd,
+                "exit_code": res["exit_code"], "output": res["output"]}
 
     @staticmethod
     def _strip(link):

@@ -40,6 +40,8 @@ a { color: var(--blue); }
 }
 .tab:hover { color: var(--text); background: var(--panel-2); }
 .tab.active { color: var(--bg); background: var(--accent); font-weight: 600; }
+.badge { display: inline-block; margin-left: 6px; background: var(--danger); color: #2b0606;
+         font-size: 11px; font-weight: 700; border-radius: 9px; padding: 0 6px; }
 .spacer { flex: 1; }
 .stats { color: var(--faint); font-size: 12px; }
 .live { font-size: 12px; font-weight: 600; }

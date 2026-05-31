@@ -157,8 +157,25 @@ TOOLS = [
                 "confidence": {"type": "number", "default": 1.0, "description": "0..1."},
                 "force": {"type": "boolean", "default": False,
                           "description": "Bypass the duplicate check (only if truly new)."},
+                "verify": {"type": "string", "description": "Optional shell command that "
+                           "PROVES this memory (a test/build/probe). If given, it must "
+                           "exit 0 or NOTHING is saved; the command is stored so the "
+                           "fact can be re-verified later. Use for code/empirical claims."},
             },
             "required": ["content"],
+        },
+    },
+    {
+        "name": "memory_verify",
+        "description": (
+            "Re-run the verification command stored on a node (from a verified "
+            "insert). On pass, refreshes its last-verified time; on fail, drops its "
+            "confidence and flags it — so stored facts don't rot into stale lies. " + _ID_NOTE
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"node_id": {"type": "string"}},
+            "required": ["node_id"],
         },
     },
     {
@@ -273,7 +290,10 @@ def handle_tool(name: str, args: dict) -> dict:
             label=args.get("label", ""), importance=float(args.get("importance", 1.0)),
             links=args.get("links"), scope=args.get("scope", "global"),
             sources=args.get("sources", ""), confidence=float(args.get("confidence", 1.0)),
-            type=args.get("type", "fact"), force=bool(args.get("force", False)))
+            type=args.get("type", "fact"), force=bool(args.get("force", False)),
+            verify=args.get("verify"))
+    if name == "memory_verify":
+        return b.verify(args["node_id"])
     if name == "memory_update":
         fields = {k: args.get(k) for k in
                   ("content", "summary", "label", "importance", "confidence", "sources", "type")}

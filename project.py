@@ -133,7 +133,8 @@ class ProjectMemory:
                 content=body, summary=meta.get("summary", ""),
                 label=meta.get("label", ""), importance=float(meta.get("importance", 1.0)),
                 scope="project", project=self.key, type=meta.get("type", "fact"),
-                sources=meta.get("sources", ""), confidence=float(meta.get("confidence", 1.0)))
+                sources=meta.get("sources", ""), confidence=float(meta.get("confidence", 1.0)),
+                verified_by=meta.get("verified_by", ""))
             self.uid2int[uid] = iid
             self.int2uid[iid] = uid
         # pass 2: wire links once (canonical-dedupe across both endpoints' files)
@@ -152,7 +153,8 @@ class ProjectMemory:
 
     # -- writes (file is source of truth; in-memory store mirrors it) --
     def insert(self, content, summary="", label="", importance=1.0,
-               links=None, sources="", confidence=1.0, type="fact") -> str:
+               links=None, sources="", confidence=1.0, type="fact",
+               verified_by="") -> str:
         uid = uuid.uuid4().hex[:12]
         now = self._clock()
         norm_links = [list(_norm_link(l)) for l in (links or [])
@@ -160,12 +162,15 @@ class ProjectMemory:
         meta = {"id": uid, "label": label, "summary": summary, "scope": "project",
                 "type": type, "importance": float(importance),
                 "confidence": float(confidence), "sources": sources,
+                "verified_by": verified_by,
+                "last_verified": now if verified_by else None,
                 "links": norm_links, "created_at": now}
         self.meta[uid] = meta
         self._path(uid).write_text(serialize(meta, content), encoding="utf-8")
         iid = self.store.insert(content=content, summary=summary, label=label,
                                 importance=importance, scope="project", type=type,
-                                project=self.key, sources=sources, confidence=confidence)
+                                project=self.key, sources=sources, confidence=confidence,
+                                verified_by=verified_by)
         self.uid2int[uid] = iid
         self.int2uid[iid] = uid
         for other, kind, weight in norm_links:
@@ -180,7 +185,8 @@ class ProjectMemory:
         content = fields.get("content")
         if content is None:
             content = body
-        for k in ("label", "summary", "importance", "confidence", "sources", "type"):
+        for k in ("label", "summary", "importance", "confidence", "sources", "type",
+                  "verified_by", "last_verified"):
             if fields.get(k) is not None:
                 meta[k] = fields[k]
         self._path(uid).write_text(serialize(meta, content), encoding="utf-8")
@@ -247,6 +253,10 @@ class ProjectMemory:
         if not node:
             return None
         node["id"] = uid
+        # verified_by / last_verified live in the file (source of truth), not the
+        # throwaway in-memory store.
+        node["verified_by"] = self.meta[uid].get("verified_by", "")
+        node["last_verified"] = self.meta[uid].get("last_verified")
         node["neighbors"] = self._neighbors(uid)
         return node
 

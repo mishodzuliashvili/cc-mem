@@ -42,7 +42,13 @@ python3 setup.py all       # create .venv + install deps, register the MCP serve
                            # and sync the memory-loop prompt into your CLAUDE.md
 ```
 
-Or run the pieces individually: `python3 setup.py deps` / `mcp` / `prompt`.
+Or run the pieces individually: `python3 setup.py deps` / `mcp` / `prompt` / `hooks`.
+
+`python3 setup.py hooks` installs a **SessionStart auto-recall** hook (every session
+starts already knowing your standing preferences + this project's key memories, no
+search needed). Add `--capture` for an opt-in **SessionEnd auto-capture** hook that
+proposes learnings from the session into a review queue (needs the `claude` CLI;
+spends a small headless call per session).
 
 **The system prompt lives in the repo** at [`prompt/memory-loop.md`](prompt/memory-loop.md)
 — the single source of truth for how Claude should use the memory (the
@@ -103,8 +109,25 @@ learnings, and **revise when you correct it**. That guidance lives in
 | `memory_reinforce(src, dst, kind, delta)` | Learn the graph | edge weight |
 | `memory_stats()` | Introspect | counts |
 
-`links` is `[[other_id, kind, weight], ...]`. Edge kinds: `related`, `causal`,
-`co-used`, `part-of`.
+Plus `memory_get_many(ids)`, `memory_recall(query)` (briefs + top full content in
+one call), `memory_update` / `memory_delete` (revise, don't duplicate), and
+`memory_verify(id)` (re-run a stored check). `links` is `[[other_id, kind, weight],
+...]`; edge kinds: `related`, `causal`, `co-used`, `part-of`.
+
+## Self-learning features
+
+- **Auto-recall (SessionStart hook)** — sessions begin with your standing
+  preferences + the project's key memories already in context.
+- **Auto-capture (SessionEnd hook, opt-in)** — proposes learnings into a review
+  queue; you approve/dismiss in the UI's **Pending** tab. Nothing enters long-term
+  memory without a human OK.
+- **Dedup on insert** — `memory_insert` refuses a near-duplicate and returns the
+  candidates, steering Claude to `memory_update` in place instead of piling up copies.
+- **Verification-gated writes** — pass `verify="<command>"` to `memory_insert`; it
+  must exit 0 or nothing is saved, and the command is stored so `memory_verify` can
+  re-check it later (keeps code/empirical facts honest, not rotting).
+- **Node types** — `fact` / `preference` / `decision` / `howto` / `reference`. The
+  functional one is `preference`: a rule Claude must *apply*, not just recall.
 
 ## Retrieval, briefly
 
@@ -177,7 +200,13 @@ python3 test_memory.py     # 30 checks: core, scope, cross-session, MCP stdio
 - `embedder.py` — pluggable embedder (default: stdlib lexical hash).
 - `mcp_server.py` — hand-rolled stdio JSON-RPC MCP server (zero deps).
 - `test_memory.py` — core + full MCP-over-stdio session simulation.
+- `brain.py` — two-tier facade (global + project), dedup + verification gate.
+- `project.py` — git-committed, file-per-node project memory.
+- `runner.py` — runs verification commands.
+- `hooks/` — SessionStart auto-recall + SessionEnd auto-capture scripts.
+- `prompt/memory-loop.md` — the self-learning loop prompt (synced by setup.py).
 - `manage.py` / `webapp/` — Python JSON API + static server for the web app.
-- `ui/` — Vite + React frontend (Table / Search / Graph, create/edit/delete).
+- `ui/` — Vite + React frontend (Table / Search / Graph / Pending).
+- `setup.py` — installer (`deps` / `mcp` / `prompt` / `hooks` / `all`).
 - `dev.sh` — one command to run the API + Vite dev server together.
 - `index.md` — the design & vision doc.

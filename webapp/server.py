@@ -139,6 +139,74 @@ def api_delete_edge(_m, q, _b):
     return brain().unlink(q["a"][0], q["b"][0], (q.get("kind", [None])[0]))
 
 
+# ── Pending capture proposals (from the SessionEnd hook) ──────────────────────
+
+def _pending_dir() -> Path:
+    from graph_memory import default_db_path
+    return default_db_path().parent / "pending"
+
+
+def api_pending_list(_m, _q, _b):
+    pend = _pending_dir()
+    files = []
+    if pend.exists():
+        for f in sorted(pend.glob("*.json")):
+            try:
+                data = json.loads(f.read_text())
+                files.append({"file": f.name, "cwd": data.get("cwd", ""),
+                              "proposals": data.get("proposals", [])})
+            except Exception:
+                continue
+    total = sum(len(f["proposals"]) for f in files)
+    return {"files": files, "total": total}
+
+
+def _load_pending(name: str):
+    f = _pending_dir() / Path(name).name
+    return f, (json.loads(f.read_text()) if f.exists() else None)
+
+
+def api_pending_approve(_m, _q, body):
+    f, data = _load_pending(body.get("file", ""))
+    if not data:
+        return {"error": "pending file not found"}, 404
+    idx = int(body.get("index", -1))
+    props = data.get("proposals", [])
+    if not (0 <= idx < len(props)):
+        return {"error": "bad index"}, 400
+    p = {**props[idx], **(body.get("overrides") or {})}  # allow edits on approve
+    # route to the proposal's own project so project-scope lands in the right repo
+    target = Brain(cwd=Path(data["cwd"]) if data.get("cwd") else None)
+    res = target.insert(content=p.get("content", ""), summary=p.get("summary", ""),
+                        label=p.get("label", ""), type=p.get("type", "fact"),
+                        scope=p.get("scope", "global"), force=True)
+    target.close()
+    if res.get("ok"):
+        props.pop(idx)
+        _save_or_delete(f, data, props)
+    return res
+
+
+def api_pending_dismiss(_m, _q, body):
+    f, data = _load_pending(body.get("file", ""))
+    if not data:
+        return {"error": "not found"}, 404
+    props = data.get("proposals", [])
+    idx = int(body.get("index", -1))
+    if 0 <= idx < len(props):
+        props.pop(idx)
+    _save_or_delete(f, data, props)
+    return {"ok": True}
+
+
+def _save_or_delete(f: Path, data: dict, props: list):
+    if props:
+        data["proposals"] = props
+        f.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    else:
+        f.unlink(missing_ok=True)
+
+
 # ── Routing ──────────────────────────────────────────────────────────────────
 
 _ID = r"([\w:.\-]+)"
@@ -155,6 +223,9 @@ ROUTES = [
     ("POST", r"^/api/search$", api_search),
     ("POST", r"^/api/edges$", api_create_edge),
     ("DELETE", r"^/api/edges$", api_delete_edge),
+    ("GET", r"^/api/pending$", api_pending_list),
+    ("POST", r"^/api/pending/approve$", api_pending_approve),
+    ("POST", r"^/api/pending/dismiss$", api_pending_dismiss),
 ]
 COMPILED = [(m, re.compile(p), fn) for m, p, fn in ROUTES]
 

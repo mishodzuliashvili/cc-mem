@@ -20,6 +20,7 @@ present. Override with --target /path/to/CLAUDE.md (repeatable).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -119,6 +120,52 @@ def _has_claude() -> bool:
                           capture_output=True).returncode == 0
 
 
+# ── hooks (auto-recall on SessionStart; opt-in auto-capture on SessionEnd) ────
+
+def _hook_cmd(script: str, embedder: bool) -> str:
+    env = f"CC_MEM_DB={DEFAULT_DB} "
+    if embedder:
+        env += "CC_MEM_EMBEDDER=local "
+    return f"{env}{VENV_PY} {REPO / 'hooks' / script}"
+
+
+def _scrub(groups: list) -> list:
+    """Drop any hook group that points at our hooks/ scripts (so re-runs update
+    cleanly instead of stacking duplicates)."""
+    return [g for g in groups
+            if not any("/hooks/session_" in h.get("command", "")
+                       for h in g.get("hooks", []))]
+
+
+def install_hooks(dirs: list[Path], capture: bool) -> None:
+    for d in dirs:
+        settings = d / "settings.json"
+        try:
+            data = json.loads(settings.read_text()) if settings.exists() else {}
+        except Exception:
+            print(f"  ! {settings} is not valid JSON — skipping"); continue
+        hooks = data.setdefault("hooks", {})
+
+        ss = _scrub(hooks.get("SessionStart", []))
+        ss.append({"hooks": [{"type": "command", "command": _hook_cmd("session_start.py", False)}]})
+        hooks["SessionStart"] = ss
+
+        se = _scrub(hooks.get("SessionEnd", []))
+        if capture:
+            se.append({"hooks": [{"type": "command", "command": _hook_cmd("session_capture.py", True)}]})
+        if se:
+            hooks["SessionEnd"] = se
+        elif "SessionEnd" in hooks:
+            del hooks["SessionEnd"]
+
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        print(f"  hooks {'(recall+capture)' if capture else '(recall)'} -> {settings}")
+    if not capture:
+        print("  note: auto-capture is opt-in — `python3 setup.py hooks --capture` "
+              "(needs the `claude` CLI; spends a small headless call per session).")
+
+
 # ── deps ──────────────────────────────────────────────────────────────────────
 
 def install_deps() -> None:
@@ -136,9 +183,11 @@ def install_deps() -> None:
 
 def main():
     ap = argparse.ArgumentParser(description="cc-mem installer")
-    ap.add_argument("command", choices=["all", "prompt", "mcp", "deps"])
+    ap.add_argument("command", choices=["all", "prompt", "mcp", "deps", "hooks"])
     ap.add_argument("--target", action="append", type=Path,
                     help="explicit CLAUDE.md path for `prompt` (repeatable)")
+    ap.add_argument("--capture", action="store_true",
+                    help="for `hooks`/`all`: also install the SessionEnd auto-capture hook")
     args = ap.parse_args()
 
     if args.command in ("deps", "all"):
@@ -149,6 +198,8 @@ def main():
         print("• prompt")
         targets = args.target or prompt_targets()
         sync_prompt(targets)
+    if args.command in ("hooks", "all"):
+        print("• hooks"); install_hooks(config_dirs(), capture=args.capture)
     print("done.")
 
 

@@ -32,6 +32,9 @@ export const api = {
   search: (query, mode = 'text', k = 20) => req('POST', '/search', { query, mode, k }),
   link: (src, dst, kind = 'related', weight = 1) =>
     req('POST', '/edges', { src, dst, kind, weight }),
+  pending: () => req('GET', '/pending'),
+  approve: (file, index, overrides) => req('POST', '/pending/approve', { file, index, overrides }),
+  dismiss: (file, index) => req('POST', '/pending/dismiss', { file, index }),
   unlink: (a, b, kind) => {
     const q = new URLSearchParams({ a, b, ...(kind ? { kind } : {}) }).toString()
     return req('DELETE', `/edges?${q}`)
