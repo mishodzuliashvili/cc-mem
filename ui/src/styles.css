@@ -132,6 +132,7 @@ td.summary { color: var(--muted); max-width: 460px; overflow: hidden; text-overf
 .md pre { background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
           padding: 10px; overflow: auto; }
 .md a { color: var(--blue); }
+.md a.noderef { cursor: pointer; background: #1f6feb22; padding: 0 4px; border-radius: 4px; }
 .metaline { color: var(--muted); font-size: 12px; margin: 6px 0; }
 .metaline b { color: var(--text); }
 

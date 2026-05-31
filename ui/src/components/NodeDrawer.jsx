@@ -9,6 +9,18 @@ const BLANK = {
 
 const TYPES = ['fact', 'preference', 'decision', 'howto', 'gotcha', 'reference']
 
+// Render markdown, turning any legacy [[id]] prose references into clickable links
+// (click opens that node; if it was deleted, the drawer will just show "not found").
+// Note: relationships should live in edges, not prose — this only makes existing
+// [[id]] text navigable.
+function renderContent(content) {
+  const linked = content.replace(
+    /\[\[([\w:.\-]+)\]\]/g,
+    '<a class="noderef" data-ref="$1">$1</a>',
+  )
+  return marked.parse(linked)
+}
+
 export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash }) {
   const isNew = id === 'new'
   const [node, setNode] = useState(null)
@@ -150,7 +162,14 @@ function ViewNode({ node, onOpenOther, onRemoveLink }) {
       </p>
       {node.sources && <p className="metaline"><b>source:</b> {node.sources}</p>}
 
-      <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(node.content || '') }} />
+      <div
+        className="md"
+        onClick={(e) => {
+          const ref = e.target.getAttribute && e.target.getAttribute('data-ref')
+          if (ref) onOpenOther(ref)
+        }}
+        dangerouslySetInnerHTML={{ __html: renderContent(node.content || '') }}
+      />
 
       {node.neighbors?.length > 0 && (
         <div className="neighbors">

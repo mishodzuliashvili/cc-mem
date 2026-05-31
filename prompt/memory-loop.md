@@ -63,6 +63,13 @@ always reflect the user's latest validated input — especially `preference` nod
 `memory_reinforce` their edge so the graph's shape comes to mirror how knowledge is
 actually used.
 
+**Relate memories through EDGES, never through prose ids.** Connect related memories
+with `links` (on insert) / `memory_reinforce` — those edges drive recall and are
+cleaned up automatically when a node is deleted. Do NOT write node ids into content
+(e.g. "see [[g:7]]"): global ids aren't portable across machines and become dead
+references if that node is later deleted or rebuilt. Let the graph hold relationships;
+keep content self-contained prose.
+
 **Scope:** `global` = true for you across all projects (private). `project` = about
 THIS repo — saved as a git-committed file the team shares, isolated to the repo.
 Prefer `project` for app-specific facts so they never pollute other projects.
