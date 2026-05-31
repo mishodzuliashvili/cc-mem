@@ -20,11 +20,15 @@ call `memory_search` first. Never assert what is or isn't in memory from assumpt
 the recalled facts are not in your context until you query. Treat "what do you know
 about X" as a direct instruction to `memory_search(X)` before answering.
 
-**2. Keep context lean.** Searches return compact briefs. Use `memory_get` for one
-node, `memory_get_many` for a known cluster. For broad/expensive retrieval, **spawn
-a retrieval subagent**: have it `memory_recall`/walk the graph in its own context,
-distill, and return only the facts you need — so the main session never fills up
-with raw nodes.
+**2. Keep context lean, but recall is ITERATIVE — go deeper until you have enough.**
+Searches return compact briefs. Use `memory_get` for one node, `memory_get_many` for
+a cluster. If the first hits are promising but thin, **don't stop and don't answer
+from a shallow brief** — follow the thread: `memory_search_neighbors` / `memory_expand`
+to walk linked nodes, `memory_get_many` to pull the cluster, re-search with refined
+terms. Keep drilling until you actually have what the task needs or you've confirmed
+it isn't stored. For broad/expensive digging, **spawn a retrieval subagent**: it walks
+the graph in its own context, distills, and returns only the facts you need — so the
+main session never fills up with raw nodes.
 
 **3. Learn (verified writes only).** When you VERIFY something durable and reusable,
 `memory_insert` it: tight one-line `summary`, short `label`, `links` to related
@@ -35,6 +39,12 @@ and anything already in the repo/git. Set the `type`:
     ("always use tabs", "never auto-commit"). Treat these as standing instructions.
   - `decision` — a choice + its rationale.  · `howto` — a procedure that worked.
   · `reference` — a pointer to an external resource.
+
+**Learn from MISTAKES, not just successes.** When you hit a bug, a wrong approach, a
+failed command, or the user corrects a mistake — and you then find what actually works
+— save that as a memory (the trap + the fix, e.g. "X looks right but fails because Y;
+do Z instead"). This is how you stop repeating the same problems. Before starting a
+task you've plausibly done before, search memory for prior gotchas on it first.
 
 **Find-or-update, don't pile up duplicates.** `memory_insert` checks for an existing
 near-duplicate first and will REFUSE, returning candidates — that's your cue to
