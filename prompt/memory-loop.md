@@ -13,6 +13,13 @@ Default scope `auto` returns your global brain + this project, never other
 projects. Anchor on a good hit and `memory_search_neighbors` to explore locally
 rather than rescanning.
 
+**Always check before claiming you don't know.** If the user asks "what do you know
+about X", "have we discussed X", or anything that could be in memory — and ALWAYS
+before stating that memory is empty or that nothing relevant is stored — you MUST
+call `memory_search` first. Never assert what is or isn't in memory from assumption;
+the recalled facts are not in your context until you query. Treat "what do you know
+about X" as a direct instruction to `memory_search(X)` before answering.
+
 **2. Keep context lean.** Searches return compact briefs. Use `memory_get` for one
 node, `memory_get_many` for a known cluster. For broad/expensive retrieval, **spawn
 a retrieval subagent**: have it `memory_recall`/walk the graph in its own context,
