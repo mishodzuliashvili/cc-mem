@@ -21,7 +21,7 @@ function renderContent(content) {
   return marked.parse(linked)
 }
 
-export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash }) {
+export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash, projects = [] }) {
   const isNew = id === 'new'
   const [node, setNode] = useState(null)
   const [editing, setEditing] = useState(isNew)
@@ -107,7 +107,7 @@ export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash 
 
         <div className="body">
           {editing ? (
-            <EditForm form={form} set={set} />
+            <EditForm form={form} set={set} projects={projects} isNew={isNew} />
           ) : node ? (
             <ViewNode node={node} onOpenOther={onOpenOther} onRemoveLink={removeLink} />
           ) : (
@@ -189,7 +189,7 @@ function ViewNode({ node, onOpenOther, onRemoveLink }) {
   )
 }
 
-function EditForm({ form, set }) {
+function EditForm({ form, set, projects = [], isNew }) {
   return (
     <>
       <div className="row">
@@ -233,10 +233,15 @@ function EditForm({ form, set }) {
         <label>Sources / how verified</label>
         <input value={form.sources} onChange={set('sources')} placeholder="provenance" />
       </div>
-      {form.scope === 'project' && (
+      {form.scope === 'project' && isNew && (
         <div className="field">
           <label>Project</label>
-          <input value={form.project} onChange={set('project')} placeholder="/path/to/project" />
+          <select value={form.project} onChange={set('project')}>
+            <option value="">— choose a project —</option>
+            {projects.map((p) => (
+              <option key={p.key} value={p.key}>{p.key.split('/').pop()}</option>
+            ))}
+          </select>
         </div>
       )}
     </>

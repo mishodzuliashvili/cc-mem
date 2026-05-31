@@ -75,9 +75,13 @@ regression that delayed server startup and the SessionStart hook.
 (runs on bare `python3`). 13 tools, all routed through `Brain`. Tool errors are returned as tool
 results (`isError: true`), not JSON-RPC errors.
 
-**Web app.** `webapp/server.py` is a single-threaded stdlib HTTP server (one SQLite connection,
-no concurrency issues) exposing a JSON API and serving `ui/dist` in prod. `ui/` is Vite + React
-(Table / Search / Graph / Pending). The UI polls `/api/version` every 2s and refetches only when
+**Web app = dashboard over ALL projects.** Unlike the MCP server (one `Brain`, scoped to its
+repo for isolation), the web backend uses `Workspace` (`workspace.py`) = the global brain +
+EVERY registered project at once. Projects self-register in `~/.claude-cc-mem/projects.json`
+(`registry.py`) the first time they get a project memory; `Workspace` loads them all and routes
+`p:<uuid>` ids via a uuid→project map. `webapp/server.py` is a single-threaded stdlib HTTP
+server exposing a JSON API and serving `ui/dist` in prod. `ui/` is Vite + React
+(Table / Search / Graph / Pending) with scope/type/project filters. The UI polls `/api/version` every 2s and refetches only when
 the DB actually changed (`PRAGMA data_version` + counts + project-file fingerprint), so live
 updates survive across processes (e.g. the MCP server writing in a Claude session).
 

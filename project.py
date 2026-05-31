@@ -137,6 +137,12 @@ class ProjectMemory:
                 verified_by=meta.get("verified_by", ""))
             self.uid2int[uid] = iid
             self.int2uid[iid] = uid
+        if parsed:  # this repo actually has project memory — make it discoverable
+            try:
+                from registry import register
+                register(self.key, self.repo_root)
+            except Exception:
+                pass
         # pass 2: wire links once (canonical-dedupe across both endpoints' files)
         seen: dict[tuple, tuple] = {}
         for uid, meta, _ in parsed:
@@ -167,6 +173,11 @@ class ProjectMemory:
                 "links": norm_links, "created_at": now}
         self.meta[uid] = meta
         self._path(uid).write_text(serialize(meta, content), encoding="utf-8")
+        try:
+            from registry import register
+            register(self.key, self.repo_root)
+        except Exception:
+            pass
         iid = self.store.insert(content=content, summary=summary, label=label,
                                 importance=importance, scope="project", type=type,
                                 project=self.key, sources=sources, confidence=confidence,

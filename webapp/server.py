@@ -28,30 +28,30 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from brain import Brain
+from brain import Brain          # used for pending-approval (routes to one project)
+from workspace import Workspace  # the dashboard view: global + ALL projects
 
 _REPO = Path(__file__).resolve().parent.parent
 _DIST = _REPO / "ui" / "dist"
 
-brain_inst = None
-PROJECT_CWD = None  # which repo's project memory to attach (default: the launch cwd)
+_ws = None
 
 
-def brain():
-    global brain_inst
-    if brain_inst is None:
-        brain_inst = Brain(cwd=PROJECT_CWD)  # global brain + a repo's project memory
-    return brain_inst
+def ws():
+    global _ws
+    if _ws is None:
+        _ws = Workspace()  # global brain + every registered project
+    return _ws
 
 
 # ── API handlers (return plain dicts/lists; routed below) ────────────────────
 
 def api_context(_m, _q, _b):
-    return brain().context()
+    return ws().context()
 
 
 def api_stats(_m, _q, _b):
-    return brain().stats()
+    return ws().stats()
 
 
 def api_version(_m, _q, _b):
@@ -60,13 +60,13 @@ def api_version(_m, _q, _b):
     its counts, and the project files' fingerprint (bumps on git pull or a
     Claude session writing a project memory). Also reloads the project store
     from disk when its files changed, so the UI stays live for team edits too."""
-    b = brain()
+    b = ws()
     b.reload_project_if_changed()
     g = b.global_store
     dv = g.db.execute("PRAGMA data_version").fetchone()[0]
     n = g.db.execute("SELECT COUNT(*) c FROM nodes").fetchone()["c"]
     e = g.db.execute("SELECT COUNT(*) c FROM edges").fetchone()["c"]
-    psig = b.project_signature()
+    psig = b.signature()
     return {"version": f"{dv}-{n}-{e}-{psig}"}
 
 
@@ -75,42 +75,42 @@ def api_list_nodes(_m, q, _b):
     scope = (q.get("scope", [""])[0] or "").strip()
     sort = (q.get("sort", ["created_at"])[0] or "created_at")
     order = (q.get("order", ["desc"])[0] or "desc")
-    return brain().list_nodes(q=text, scope=scope, sort=sort, order=order)
+    return ws().list_nodes(q=text, scope=scope, sort=sort, order=order)
 
 
 def api_get_node(_m, _q, _b, node_id):
-    node = brain().get(node_id)
+    node = ws().get(node_id)
     return node if node else ({"error": "not found"}, 404)
 
 
 def api_create_node(_m, _q, body):
     if not (body.get("content") or "").strip():
         return {"error": "content is required"}, 400
-    res = brain().insert(
+    res = ws().insert(
         content=body["content"], summary=body.get("summary", ""),
         label=body.get("label", ""), importance=float(body.get("importance", 1.0)),
-        links=body.get("links"), scope=body.get("scope", "global"),
+        scope=body.get("scope", "global"), project=body.get("project", ""),
         sources=body.get("sources", ""), confidence=float(body.get("confidence", 1.0)),
-        type=body.get("type", "fact"), force=bool(body.get("force", True)))
+        type=body.get("type", "fact"))
     return res, (201 if res.get("ok") else 409)
 
 
 def api_update_node(_m, _q, body, node_id):
     fields = {k: body.get(k) for k in
               ("content", "summary", "label", "importance", "confidence", "sources", "type")}
-    node = brain().update(node_id, **fields)
+    node = ws().update(node_id, **fields)
     if node is None:
         return {"error": "not found"}, 404
     return {"ok": True, "node": node}
 
 
 def api_delete_node(_m, _q, _b, node_id):
-    ok = brain().delete(node_id)
+    ok = ws().delete(node_id)
     return ({"ok": True} if ok else ({"error": "not found"}, 404))
 
 
 def api_graph(_m, _q, _b):
-    return brain().graph()
+    return ws().graph()
 
 
 def api_search(_m, _q, body):
@@ -120,10 +120,10 @@ def api_search(_m, _q, body):
     k = int(body.get("k", 20))
     scope = body.get("scope", "auto")
     if body.get("mode") == "semantic":
-        return {"mode": "semantic", "hits": brain().search(query, k, scope=scope)}
+        return {"mode": "semantic", "hits": ws().search(query, k, scope=scope)}
     # text mode: substring over labels/summaries across both tiers
     ql = query.lower()
-    rows = brain().list_nodes(q=query)["nodes"]
+    rows = ws().list_nodes(q=query)["nodes"]
     hits = [{"id": r["id"], "label": r["label"], "summary": r["summary"],
              "scope": r.get("scope"), "tier": r.get("tier")} for r in rows[:k]
             if ql in (r.get("label", "") or "").lower()
@@ -132,12 +132,12 @@ def api_search(_m, _q, body):
 
 
 def api_create_edge(_m, _q, body):
-    return brain().link(body["src"], body["dst"],
+    return ws().link(body["src"], body["dst"],
                         body.get("kind", "related"), float(body.get("weight", 1.0)))
 
 
 def api_delete_edge(_m, q, _b):
-    return brain().unlink(q["a"][0], q["b"][0], (q.get("kind", [None])[0]))
+    return ws().unlink(q["a"][0], q["b"][0], (q.get("kind", [None])[0]))
 
 
 # ── Pending capture proposals (from the SessionEnd hook) ──────────────────────
@@ -320,11 +320,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(port: int = 8765):
-    # Don't construct the Brain here — that would embed project memory and load the
-    # model before we bind. Bind instantly; the Brain builds lazily on first request.
+    # Don't construct the Workspace here — it would embed every project's memory and
+    # load the model before we bind. Bind instantly; build lazily on first request.
     from graph_memory import default_db_path
+    import registry
     print(f"[cc-mem api] global: {default_db_path()}")
-    print(f"[cc-mem api] project cwd: {PROJECT_CWD or '(launch dir)'}")
+    print(f"[cc-mem api] projects: {len(registry.list_projects())} registered")
     served = "+ UI" if _DIST.exists() else "(API only — run Vite for the UI)"
     print(f"[cc-mem api] http://localhost:{port}  {served}")
     HTTPServer(("127.0.0.1", port), Handler).serve_forever()

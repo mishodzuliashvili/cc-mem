@@ -14,9 +14,10 @@ const COLUMNS = [
 
 const TYPES = ['fact', 'preference', 'decision', 'howto', 'gotcha', 'reference']
 
-export default function TableView({ onOpen, tick }) {
+export default function TableView({ onOpen, tick, projects = [] }) {
   const [q, setQ] = useState('')
   const [scope, setScope] = useState('')
+  const [project, setProject] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [sort, setSort] = useState('id')
   const [order, setOrder] = useState('desc')
@@ -39,10 +40,12 @@ export default function TableView({ onOpen, tick }) {
     else { setSort(key); setOrder('desc') }
   }
 
-  // type filter is applied client-side on the fetched rows
-  const rows = typeFilter
-    ? data.nodes.filter((n) => (n.type || 'fact') === typeFilter)
-    : data.nodes
+  // type + project filters are applied client-side on the fetched rows
+  const rows = data.nodes.filter(
+    (n) => (!typeFilter || (n.type || 'fact') === typeFilter)
+      && (!project || n.project === project),
+  )
+  const shortProj = (p) => (p ? p.split('/').pop() : '')
 
   return (
     <>
@@ -62,6 +65,12 @@ export default function TableView({ onOpen, tick }) {
           <option value="">all types</option>
           {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
+        {projects.length > 0 && (
+          <select value={project} onChange={(e) => setProject(e.target.value)}>
+            <option value="">all projects</option>
+            {projects.map((p) => <option key={p.key} value={p.key}>{shortProj(p.key)}</option>)}
+          </select>
+        )}
         <span className="stats">
           {loading ? 'loading…' : `${rows.length} of ${data.total}`}
         </span>
@@ -87,7 +96,10 @@ export default function TableView({ onOpen, tick }) {
                 <td className="label">{n.label || <span className="empty">—</span>}</td>
                 <td className="summary">{n.summary}</td>
                 <td><span className="pill type">{n.type || 'fact'}</span></td>
-                <td><span className={`pill ${n.scope}`}>{n.scope}</span></td>
+                <td>
+                  <span className={`pill ${n.scope}`}>{n.scope}</span>
+                  {n.project && <span className="proj"> {shortProj(n.project)}</span>}
+                </td>
                 <td className="num">{n.importance}</td>
                 <td className="num">{n.access_count}</td>
                 <td className="num">{new Date(n.created_at * 1000).toLocaleDateString()}</td>

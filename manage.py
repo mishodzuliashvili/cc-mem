@@ -26,17 +26,11 @@ from webapp.server import serve
 
 
 def main():
-    import os
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--repo", help="inspect THIS repo's project memory "
-                    "(default: the current directory). e.g. --repo ~/code/myapp")
-    args = ap.parse_args()
-    repo = args.repo or os.environ.get("CC_MEM_PROJECT_DIR")
-    if repo:
-        import webapp.server as s
-        s.PROJECT_CWD = Path(repo).expanduser()
-    serve(args.port)
+    # The web UI shows the global brain + EVERY registered project, so it no longer
+    # matters where you launch it from.
+    serve(ap.parse_args().port)
 
 
 if __name__ == "__main__":

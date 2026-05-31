@@ -20,6 +20,7 @@ export default function App() {
   const [openId, setOpenId] = useState(null) // node id in drawer; 'new' = create form
   const [toast, setToast] = useState(null)
   const [pending, setPending] = useState(0)
+  const [projects, setProjects] = useState([])
   const { tick, bump, online } = useLive(2000)
 
   const flash = useCallback((msg, err = false) => {
@@ -31,6 +32,7 @@ export default function App() {
   useEffect(() => {
     api.stats().then(setStats).catch(() => {})
     api.pending().then((r) => setPending(r.total)).catch(() => {})
+    api.context().then((c) => setProjects(c.projects || [])).catch(() => {})
   }, [tick])
 
   const onChanged = useCallback(() => { bump() }, [bump])
@@ -65,7 +67,7 @@ export default function App() {
       </div>
 
       <div className="main">
-        {tab === 'table' && <TableView tick={tick} onOpen={setOpenId} />}
+        {tab === 'table' && <TableView tick={tick} onOpen={setOpenId} projects={projects} />}
         {tab === 'search' && <SearchView onOpen={setOpenId} />}
         {tab === 'graph' && <GraphView tick={tick} onOpen={setOpenId} />}
         {tab === 'pending' && <PendingView tick={tick} onChanged={bump} flash={flash} />}
@@ -77,6 +79,7 @@ export default function App() {
           onClose={() => setOpenId(null)}
           onChanged={onChanged}
           onOpenOther={(id) => setOpenId(id)}
+          projects={projects}
           flash={flash}
         />
       )}

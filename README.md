@@ -168,10 +168,15 @@ insert, or rebuild the DB if you switch.)
 ## Browse & manage the memory (web app)
 
 The memory is a binary SQLite file — not human-readable on its own. The web app
-gives it a UI: a **Table** (database view of every node, filter + sort), a
-**Search** tab (semantic or text), and a **Graph** tab (interactive force
-layout). You can **create, edit (markdown), link, and delete** memories from any
-view. It's a Vite + React frontend over the same Python JSON API.
+gives it a UI: a **Table** (database view of every node, filter by scope/type/
+project + sort), a **Search** tab (semantic or text), and a **Graph** tab
+(interactive force layout). You can **create, edit (markdown), link, and delete**
+memories from any view.
+
+It's a **dashboard over your whole knowledge base**: the global brain + **every
+project** that uses cc-mem (not just the one you launched from). Projects
+self-register the first time they get a project memory, so they show up
+automatically — launch the UI from anywhere.
 
 **Dev (hot-reload):**
 

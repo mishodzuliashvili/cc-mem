@@ -84,6 +84,7 @@ td.summary { color: var(--muted); max-width: 460px; overflow: hidden; text-overf
 .pill.global { background: #1f6feb33; color: var(--blue); }
 .pill.project { background: #a371f733; color: var(--purple); }
 .pill.type { background: #2d333b; color: #adbac7; }
+.proj { color: var(--purple); font-size: 11px; }
 
 .empty { color: var(--faint); font-style: italic; padding: 30px; text-align: center; }
 
