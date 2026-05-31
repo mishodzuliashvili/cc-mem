@@ -26,16 +26,34 @@ MAX_PROJECT = 10
 
 
 def build_context(cwd: str) -> str:
-    from brain import Brain
-    b = Brain(cwd=Path(cwd) if cwd else None)
-    ctx = b.context()
-    rows = b.list_nodes()["nodes"]
+    # Read directly (DB query + file frontmatter) — NO embeddings, so this stays
+    # instant even when the project already has lots of memories.
+    from graph_memory import GraphMemory, default_db_path
+    from project import find_repo_root, project_key, parse
 
-    prefs = [r for r in rows if r.get("type") == "preference"][:MAX_PREFS]
-    proj = sorted(
-        [r for r in rows if r.get("tier") == "project" and r.get("type") != "preference"],
-        key=lambda r: r.get("importance", 1.0), reverse=True,
-    )[:MAX_PROJECT]
+    g = GraphMemory(default_db_path())  # opening doesn't embed
+    grows = [dict(r) for r in g.db.execute(
+        "SELECT id,label,summary,type,importance FROM nodes")]
+    g.close()
+
+    project_name, proj_rows = None, []
+    repo = find_repo_root(Path(cwd)) if cwd else None
+    if repo:
+        project_name = project_key(repo)
+        for f in sorted((repo / ".cc-mem" / "nodes").glob("*.md")):
+            try:
+                meta, _ = parse(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            meta["id"] = f"p:{meta.get('id', f.stem)}"
+            proj_rows.append(meta)
+
+    prefs = [{"id": f"g:{r['id']}", **r} for r in grows if r.get("type") == "preference"]
+    prefs += [r for r in proj_rows if r.get("type") == "preference"]
+    prefs = prefs[:MAX_PREFS]
+    proj = sorted([r for r in proj_rows if r.get("type") != "preference"],
+                  key=lambda r: r.get("importance", 1.0), reverse=True)[:MAX_PROJECT]
+    ctx = {"project_key": project_name}
     pending = _pending_count()
 
     lines = ["# cc-mem — recalled memory for this session"]
