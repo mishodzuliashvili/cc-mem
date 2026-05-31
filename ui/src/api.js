@@ -17,6 +17,7 @@ async function req(method, path, body) {
 
 export const api = {
   stats: () => req('GET', '/stats'),
+  context: () => req('GET', '/context'),
   version: () => req('GET', '/version'),
   listNodes: (params = {}) => {
     const q = new URLSearchParams(
