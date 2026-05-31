@@ -129,15 +129,28 @@ def _hook_cmd(script: str, embedder: bool) -> str:
     return f"{env}{VENV_PY} {REPO / 'hooks' / script}"
 
 
+_HOOKS_MARKER = str(REPO / "hooks")  # our hook commands all reference this dir
+
+
 def _scrub(groups: list) -> list:
-    """Drop any hook group that points at our hooks/ scripts (so re-runs update
-    cleanly instead of stacking duplicates)."""
+    """Drop any hook group that points at THIS repo's hooks/ scripts (so re-runs
+    update cleanly instead of stacking duplicates) — leaves unrelated hooks be."""
     return [g for g in groups
-            if not any("/hooks/session_" in h.get("command", "")
+            if not any(_HOOKS_MARKER in h.get("command", "")
                        for h in g.get("hooks", []))]
 
 
-def install_hooks(dirs: list[Path], capture: bool) -> None:
+def _set(hooks: dict, event: str, command: str | None) -> None:
+    groups = _scrub(hooks.get(event, []))
+    if command:
+        groups.append({"hooks": [{"type": "command", "command": command}]})
+    if groups:
+        hooks[event] = groups
+    elif event in hooks:
+        del hooks[event]
+
+
+def install_hooks(dirs: list[Path], capture: bool, recall: bool) -> None:
     for d in dirs:
         settings = d / "settings.json"
         try:
@@ -145,25 +158,19 @@ def install_hooks(dirs: list[Path], capture: bool) -> None:
         except Exception:
             print(f"  ! {settings} is not valid JSON — skipping"); continue
         hooks = data.setdefault("hooks", {})
-
-        ss = _scrub(hooks.get("SessionStart", []))
-        ss.append({"hooks": [{"type": "command", "command": _hook_cmd("session_start.py", False)}]})
-        hooks["SessionStart"] = ss
-
-        se = _scrub(hooks.get("SessionEnd", []))
-        if capture:
-            se.append({"hooks": [{"type": "command", "command": _hook_cmd("session_capture.py", True)}]})
-        if se:
-            hooks["SessionEnd"] = se
-        elif "SessionEnd" in hooks:
-            del hooks["SessionEnd"]
-
+        _set(hooks, "SessionStart", _hook_cmd("session_start.py", False))   # always: auto-recall
+        _set(hooks, "SessionEnd", _hook_cmd("session_capture.py", True) if capture else None)
+        _set(hooks, "UserPromptSubmit", _hook_cmd("prompt_recall.py", True) if recall else None)
         settings.parent.mkdir(parents=True, exist_ok=True)
         settings.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        print(f"  hooks {'(recall+capture)' if capture else '(recall)'} -> {settings}")
+        extras = "+".join(["recall-on-start"] + (["capture"] if capture else [])
+                          + (["prompt-recall"] if recall else []))
+        print(f"  hooks ({extras}) -> {settings}")
     if not capture:
-        print("  note: auto-capture is opt-in — `python3 setup.py hooks --capture` "
-              "(needs the `claude` CLI; spends a small headless call per session).")
+        print("  note: --capture adds SessionEnd auto-capture (needs `claude` CLI).")
+    if not recall:
+        print("  note: --recall adds UserPromptSubmit deterministic auto-recall "
+              "(runs a warm background daemon; semantic search on every prompt).")
 
 
 # ── deps ──────────────────────────────────────────────────────────────────────
@@ -188,6 +195,8 @@ def main():
                     help="explicit CLAUDE.md path for `prompt` (repeatable)")
     ap.add_argument("--capture", action="store_true",
                     help="for `hooks`/`all`: also install the SessionEnd auto-capture hook")
+    ap.add_argument("--recall", action="store_true",
+                    help="for `hooks`/`all`: also install the UserPromptSubmit auto-recall hook")
     args = ap.parse_args()
 
     if args.command in ("deps", "all"):
@@ -199,7 +208,7 @@ def main():
         targets = args.target or prompt_targets()
         sync_prompt(targets)
     if args.command in ("hooks", "all"):
-        print("• hooks"); install_hooks(config_dirs(), capture=args.capture)
+        print("• hooks"); install_hooks(config_dirs(), capture=args.capture, recall=args.recall)
     print("done.")
 
 

@@ -7,7 +7,7 @@ const BLANK = {
   importance: 1, confidence: 1, sources: '', project: '',
 }
 
-const TYPES = ['fact', 'preference', 'decision', 'howto', 'reference']
+const TYPES = ['fact', 'preference', 'decision', 'howto', 'gotcha', 'reference']
 
 export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash }) {
   const isNew = id === 'new'

@@ -164,10 +164,14 @@ class MCPClient:
         import os
         env = dict(os.environ)  # inherit so CC_MEM_EMBEDDER reaches the subprocess
         env["CC_MEM_DB"] = db_path
+        # Run in a clean, non-git cwd so the server has no project tier — isolates
+        # the test from whatever repo it happens to run inside (e.g. cc-mem's own
+        # committed .cc-mem/ project memory).
+        self._cwd = tempfile.mkdtemp()
         self.proc = subprocess.Popen(
             [sys.executable, str(HERE / "mcp_server.py")],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, env=env, bufsize=1,
+            text=True, env=env, bufsize=1, cwd=self._cwd,
         )
         self._id = 0
 

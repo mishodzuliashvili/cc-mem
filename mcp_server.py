@@ -148,7 +148,8 @@ TOOLS = [
                          "description": "One of: fact (verified knowledge), preference "
                          "(a rule/correction Claude must APPLY, not just recall), "
                          "decision (a choice + rationale), howto (a procedure that "
-                         "worked), reference (pointer to an external resource)."},
+                         "worked), gotcha (a mistake/trap + its fix — a lesson learned), "
+                         "reference (pointer to an external resource)."},
                 "importance": {"type": "number", "default": 1.0},
                 "links": {"type": "array", "description": "[[other_id, kind, weight], ...]",
                           "items": {"type": "array"}},
@@ -194,7 +195,7 @@ TOOLS = [
                 "content": {"type": "string"}, "summary": {"type": "string"},
                 "label": {"type": "string"}, "importance": {"type": "number"},
                 "confidence": {"type": "number"}, "sources": {"type": "string"},
-                "type": {"type": "string", "description": "fact|preference|decision|howto|reference"},
+                "type": {"type": "string", "description": "fact|preference|decision|howto|gotcha|reference"},
             },
             "required": ["node_id"],
         },

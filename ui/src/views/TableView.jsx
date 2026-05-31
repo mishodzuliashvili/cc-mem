@@ -12,9 +12,12 @@ const COLUMNS = [
   { key: 'created_at', label: 'Created' },
 ]
 
+const TYPES = ['fact', 'preference', 'decision', 'howto', 'gotcha', 'reference']
+
 export default function TableView({ onOpen, tick }) {
   const [q, setQ] = useState('')
   const [scope, setScope] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
   const [sort, setSort] = useState('id')
   const [order, setOrder] = useState('desc')
   const [data, setData] = useState({ nodes: [], shown: 0, total: 0 })
@@ -36,6 +39,11 @@ export default function TableView({ onOpen, tick }) {
     else { setSort(key); setOrder('desc') }
   }
 
+  // type filter is applied client-side on the fetched rows
+  const rows = typeFilter
+    ? data.nodes.filter((n) => (n.type || 'fact') === typeFilter)
+    : data.nodes
+
   return (
     <>
       <div className="toolbar">
@@ -50,12 +58,16 @@ export default function TableView({ onOpen, tick }) {
           <option value="global">global</option>
           <option value="project">project</option>
         </select>
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <option value="">all types</option>
+          {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
         <span className="stats">
-          {loading ? 'loading…' : `${data.shown} of ${data.total}`}
+          {loading ? 'loading…' : `${rows.length} of ${data.total}`}
         </span>
       </div>
 
-      {data.nodes.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="empty">No memories match. Click “+ New memory” to add one.</div>
       ) : (
         <table>
@@ -69,7 +81,7 @@ export default function TableView({ onOpen, tick }) {
             </tr>
           </thead>
           <tbody>
-            {data.nodes.map((n) => (
+            {rows.map((n) => (
               <tr key={n.id} onClick={() => onOpen(n.id)}>
                 <td className="id">{n.id}</td>
                 <td className="label">{n.label || <span className="empty">—</span>}</td>

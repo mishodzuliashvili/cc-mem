@@ -38,13 +38,14 @@ and anything already in the repo/git. Set the `type`:
   - `preference` — a rule or correction the user wants you to APPLY, not just recall
     ("always use tabs", "never auto-commit"). Treat these as standing instructions.
   - `decision` — a choice + its rationale.  · `howto` — a procedure that worked.
+  · `gotcha` — a mistake/trap + its fix (a lesson learned).
   · `reference` — a pointer to an external resource.
 
 **Learn from MISTAKES, not just successes.** When you hit a bug, a wrong approach, a
 failed command, or the user corrects a mistake — and you then find what actually works
-— save that as a memory (the trap + the fix, e.g. "X looks right but fails because Y;
-do Z instead"). This is how you stop repeating the same problems. Before starting a
-task you've plausibly done before, search memory for prior gotchas on it first.
+— save it as a `gotcha` memory (the trap + the fix, e.g. "X looks right but fails
+because Y; do Z instead"). This is how you stop repeating the same problems. Before
+starting a task you've plausibly done before, search memory for prior `gotcha`s first.
 
 **Find-or-update, don't pile up duplicates.** `memory_insert` checks for an existing
 near-duplicate first and will REFUSE, returning candidates — that's your cue to

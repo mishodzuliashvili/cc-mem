@@ -46,9 +46,13 @@ Or run the pieces individually: `python3 setup.py deps` / `mcp` / `prompt` / `ho
 
 `python3 setup.py hooks` installs a **SessionStart auto-recall** hook (every session
 starts already knowing your standing preferences + this project's key memories, no
-search needed). Add `--capture` for an opt-in **SessionEnd auto-capture** hook that
-proposes learnings from the session into a review queue (needs the `claude` CLI;
-spends a small headless call per session).
+search needed). Opt-in extras:
+- `--recall` — a **UserPromptSubmit** hook that runs a semantic search on *every*
+  prompt and injects the top hits before Claude responds (deterministic recall, not
+  reliant on Claude remembering to search). Backed by a warm background daemon
+  (`recall_daemon.py`) so it's ~instant after the first prompt.
+- `--capture` — a **SessionEnd** hook that proposes learnings into a review queue
+  (needs the `claude` CLI; spends a small headless call per session).
 
 **The system prompt lives in the repo** at [`prompt/memory-loop.md`](prompt/memory-loop.md)
 — the single source of truth for how Claude should use the memory (the
@@ -126,8 +130,12 @@ one call), `memory_update` / `memory_delete` (revise, don't duplicate), and
 - **Verification-gated writes** — pass `verify="<command>"` to `memory_insert`; it
   must exit 0 or nothing is saved, and the command is stored so `memory_verify` can
   re-check it later (keeps code/empirical facts honest, not rotting).
-- **Node types** — `fact` / `preference` / `decision` / `howto` / `reference`. The
-  functional one is `preference`: a rule Claude must *apply*, not just recall.
+- **Node types** — `fact` / `preference` / `decision` / `howto` / `gotcha` /
+  `reference` (filterable in the UI). `preference` = a rule Claude must *apply*;
+  `gotcha` = a mistake + its fix, so the same problems don't recur.
+- **Deterministic recall (opt-in)** — the `--recall` UserPromptSubmit hook searches
+  memory on every prompt and injects hits, so recall doesn't depend on Claude
+  choosing to search.
 
 ## Retrieval, briefly
 
