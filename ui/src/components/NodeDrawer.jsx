@@ -109,7 +109,7 @@ export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash,
           {editing ? (
             <EditForm form={form} set={set} projects={projects} isNew={isNew} />
           ) : node ? (
-            <ViewNode node={node} onOpenOther={onOpenOther} onRemoveLink={removeLink} />
+            <ViewNode node={node} onOpenOther={onOpenOther} onRemoveLink={removeLink} flash={flash} />
           ) : (
             <div className="empty">loading…</div>
           )}
@@ -149,7 +149,20 @@ export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash,
   )
 }
 
-function ViewNode({ node, onOpenOther, onRemoveLink }) {
+function ViewNode({ node, onOpenOther, onRemoveLink, flash }) {
+  const [recheck, setRecheck] = useState(null)
+  const [checking, setChecking] = useState(false)
+  const hasFreshness = (node.refs && node.refs.length) || node.verified_by
+
+  const doRecheck = async () => {
+    setChecking(true)
+    try {
+      const r = await api.recheck(node.id)
+      setRecheck(r)
+      flash(r.stale ? 'stale — source changed' : 'still fresh ✓', r.stale)
+    } catch (e) { flash(e.message, true) } finally { setChecking(false) }
+  }
+
   return (
     <>
       <span className={`pill ${node.scope}`}>{node.scope}</span>{' '}
@@ -170,6 +183,32 @@ function ViewNode({ node, onOpenOther, onRemoveLink }) {
         }}
         dangerouslySetInnerHTML={{ __html: renderContent(node.content || '') }}
       />
+
+      {hasFreshness && (
+        <div className="freshness">
+          <p className="metaline">
+            <b>Freshness</b>
+            {node.last_verified && (
+              <span className="meta"> · last verified {new Date(node.last_verified * 1000).toLocaleString()}</span>
+            )}
+            <button className="btn ghost" style={{ marginLeft: 8 }}
+              onClick={doRecheck} disabled={checking}>{checking ? '…' : 'Re-check'}</button>
+          </p>
+          {node.verified_by && <div className="metaline">verify cmd: <code>{node.verified_by}</code></div>}
+          {(node.refs || []).map((r, i) => {
+            const st = recheck?.refs?.find((x) => x.path === r.path)?.status
+            return (
+              <div className="refrow" key={i}>
+                <code>{r.path}{r.lines ? `:${r.lines}` : ''}</code>
+                {st && <span className={`refstatus ${st}`}>{st}</span>}
+              </div>
+            )
+          })}
+          {recheck && <div className={`metaline ${recheck.stale ? 'stale' : ''}`}>
+            {recheck.stale ? '⚠ stale — re-read the source and update this memory'
+                           : 'still fresh ✓'}</div>}
+        </div>
+      )}
 
       {node.neighbors?.length > 0 && (
         <div className="neighbors">

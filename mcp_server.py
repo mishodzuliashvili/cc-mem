@@ -162,6 +162,12 @@ TOOLS = [
                            "PROVES this memory (a test/build/probe). If given, it must "
                            "exit 0 or NOTHING is saved; the command is stored so the "
                            "fact can be re-verified later. Use for code/empirical claims."},
+                "refs": {"type": "array", "items": {"type": "string"},
+                         "description": "Files this memory is DERIVED FROM (paths; "
+                         "repo-relative for project scope). Their content is hashed now "
+                         "so memory_verify can later detect when a source file changed "
+                         "and flag this memory stale. Prefer this over writing paths in "
+                         "prose — prose paths can't be checked."},
             },
             "required": ["content"],
         },
@@ -169,9 +175,11 @@ TOOLS = [
     {
         "name": "memory_verify",
         "description": (
-            "Re-run the verification command stored on a node (from a verified "
-            "insert). On pass, refreshes its last-verified time; on fail, drops its "
-            "confidence and flags it — so stored facts don't rot into stale lies. " + _ID_NOTE
+            "Re-check a memory's FRESHNESS: re-hash its file `refs` (detect when a "
+            "source file changed/vanished) and re-run its `verify` command if it has "
+            "one. On all-good, refreshes last-verified; if a source changed or the "
+            "command fails, marks it stale and drops confidence — then you should "
+            "re-read the file and memory_update the node. " + _ID_NOTE
         ),
         "inputSchema": {
             "type": "object",
@@ -292,7 +300,7 @@ def handle_tool(name: str, args: dict) -> dict:
             links=args.get("links"), scope=args.get("scope", "global"),
             sources=args.get("sources", ""), confidence=float(args.get("confidence", 1.0)),
             type=args.get("type", "fact"), force=bool(args.get("force", False)),
-            verify=args.get("verify"))
+            verify=args.get("verify"), refs=args.get("refs"))
     if name == "memory_verify":
         return b.verify(args["node_id"])
     if name == "memory_update":

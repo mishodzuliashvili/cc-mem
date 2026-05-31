@@ -19,6 +19,7 @@ slice plus spreading activation and the §3.5 scoring blend.
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import struct
@@ -26,6 +27,14 @@ import time
 from pathlib import Path
 
 from embedder import cosine, embed
+
+
+def _loads(text):
+    """Parse a JSON column value; [] on empty/bad."""
+    try:
+        return json.loads(text) if text else []
+    except (ValueError, TypeError):
+        return []
 
 # ── Scoring weights (§3.5). Tunable; documented in index.md §3.5. ────────────
 ALPHA = 1.0   # similarity to query
@@ -79,6 +88,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     confidence    REAL NOT NULL DEFAULT 1.0,
     last_verified REAL,
     verified_by   TEXT NOT NULL DEFAULT '',
+    refs          TEXT NOT NULL DEFAULT '',
     embedding     BLOB NOT NULL
 );
 
@@ -121,6 +131,8 @@ class GraphMemory:
             self.db.execute("ALTER TABLE nodes ADD COLUMN type TEXT NOT NULL DEFAULT 'fact'")
         if "verified_by" not in cols:
             self.db.execute("ALTER TABLE nodes ADD COLUMN verified_by TEXT NOT NULL DEFAULT ''")
+        if "refs" not in cols:
+            self.db.execute("ALTER TABLE nodes ADD COLUMN refs TEXT NOT NULL DEFAULT ''")
 
     def _ensure_dim(self) -> None:
         """Verify the DB's stored vectors match the active embedder's dimension,
@@ -165,6 +177,7 @@ class GraphMemory:
         confidence: float = 1.0,
         type: str = "fact",
         verified_by: str = "",
+        refs: str = "",
     ) -> int:
         """Write a node + its vector + its links atomically. Returns node id.
 
@@ -179,11 +192,11 @@ class GraphMemory:
             """INSERT INTO nodes
                (content, summary, label, importance, type, project, scope,
                 created_at, last_accessed, access_count, sources, confidence,
-                last_verified, verified_by, embedding)
-               VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)""",
+                last_verified, verified_by, refs, embedding)
+               VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?)""",
             (content, summary, label, importance, type, project, scope,
              now, now, sources, confidence,
-             now if verified_by else None, verified_by, _pack(vec)),
+             now if verified_by else None, verified_by, refs, _pack(vec)),
         )
         node_id = int(cur.lastrowid or 0)
 
@@ -207,7 +220,7 @@ class GraphMemory:
             return None
         allowed = {"content", "summary", "label", "importance", "scope",
                    "project", "confidence", "sources", "type",
-                   "verified_by", "last_verified"}
+                   "verified_by", "last_verified", "refs"}
         merged = {k: row[k] for k in allowed}
         for k, v in fields.items():
             if k in allowed and v is not None:
@@ -480,6 +493,7 @@ class GraphMemory:
             "confidence": row["confidence"],
             "last_verified": row["last_verified"],
             "verified_by": row["verified_by"],
+            "refs": _loads(row["refs"]),
         }
 
 

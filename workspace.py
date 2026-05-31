@@ -182,6 +182,56 @@ class Workspace:
                                        confidence=confidence)
         return {"ok": True, "id": _g(nid), "scope": "global"}
 
+    def verify(self, node_id):
+        """Re-check one memory's freshness: re-hash its file refs (and re-run its
+        verified_by command if present). Flags stale + halves confidence on a
+        changed/missing source or failed command."""
+        import refs as _refs
+        node = self.get(node_id)
+        if not node:
+            return {"ok": False, "error": "not found"}
+        tier, raw = _parse(node_id)
+        base = self._uuid2proj[raw].repo_root if tier == "p" and raw in self._uuid2proj else None
+        cmd = node.get("verified_by") or ""
+        cmd_res = None
+        if cmd:
+            from runner import run
+            cmd_res = run(cmd, cwd=base or Path.cwd())
+        ref_status = _refs.check(node.get("refs") or [], base)
+        if not cmd and not ref_status:
+            return {"ok": False, "error": "nothing to verify (no command or file refs)"}
+        stale = (cmd_res is not None and not cmd_res["ok"]) \
+            or any(r["status"] != "ok" for r in ref_status)
+        if not stale:
+            self.update(node_id, last_verified=self.global_store._clock())
+        else:
+            self.update(node_id, confidence=max(0.0, (node.get("confidence") or 1.0) * 0.5))
+        return {"ok": True, "stale": stale, "command": cmd or None,
+                "command_ok": (cmd_res["ok"] if cmd_res else None), "refs": ref_status}
+
+    def stale_scan(self):
+        """Hash every memory's file refs and return the ones whose source files
+        changed or vanished. File-only (never runs verified_by commands en masse)."""
+        import json as _json
+        import refs as _refs
+        out = []
+        for r in self.global_store.db.execute("SELECT id,label,refs FROM nodes WHERE refs<>''"):
+            try:
+                st = _refs.check(_json.loads(r["refs"]), None)
+            except Exception:
+                continue
+            bad = [s for s in st if s["status"] != "ok"]
+            if bad:
+                out.append({"id": _g(r["id"]), "label": r["label"], "refs": bad})
+        for key, pm in self.projects.items():
+            for uid, m in pm.meta.items():
+                if m.get("refs"):
+                    bad = [s for s in _refs.check(m["refs"], pm.repo_root) if s["status"] != "ok"]
+                    if bad:
+                        out.append({"id": _p(uid), "project": key,
+                                    "label": m.get("label"), "refs": bad})
+        return out
+
     def update(self, node_id, **fields):
         tier, raw = _parse(node_id)
         if tier == "g":

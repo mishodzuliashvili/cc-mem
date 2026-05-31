@@ -85,6 +85,12 @@ td.summary { color: var(--muted); max-width: 460px; overflow: hidden; text-overf
 .pill.project { background: #a371f733; color: var(--purple); }
 .pill.type { background: #2d333b; color: #adbac7; }
 .proj { color: var(--purple); font-size: 11px; }
+.freshness { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.refrow { display: flex; gap: 8px; align-items: center; font-size: 12px; padding: 2px 0; }
+.refstatus { font-size: 11px; padding: 0 6px; border-radius: 8px; }
+.refstatus.ok { background: #1f6feb22; color: var(--blue); }
+.refstatus.changed, .refstatus.missing { background: #ff7b7222; color: var(--danger); }
+.metaline.stale { color: var(--danger); }
 
 .empty { color: var(--faint); font-style: italic; padding: 30px; text-align: center; }
 

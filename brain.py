@@ -89,7 +89,7 @@ class Brain:
 
     def insert(self, content, summary="", label="", importance=1.0, links=None,
                scope="global", sources="", confidence=1.0, type="fact",
-               force=False, verify=None) -> dict:
+               force=False, verify=None, refs=None) -> dict:
         if scope == "project" and not self.project:
             return {"ok": False, "error": "no git repo here — project scope "
                     "unavailable. Use scope='global', or run inside a repo."}
@@ -113,42 +113,61 @@ class Brain:
                         "hint": "The check command failed, so nothing was saved. Fix "
                         "the claim or the command, then retry."}
             verified_by = verify
+        import json as _json
+        import refs as _refs
+        now = self.global_store._clock()
+        snap = _refs.snapshot(refs, self._repo if scope == "project" else None, now)
         if scope == "project":
             plinks = [self._strip(l) for l in (links or [])]
             uid = self.project.insert(content, summary, label, importance,
                                       plinks, sources, confidence, type=type,
-                                      verified_by=verified_by)
+                                      verified_by=verified_by, refs=snap)
             return {"ok": True, "id": _enc_p(uid), "scope": "project",
                     "project": self.project.key, "verified": bool(verified_by)}
         glinks = [self._strip_global(l) for l in (links or [])]
         nid = self.global_store.insert(content, summary, label, importance,
                                        glinks, scope="global", sources=sources,
                                        confidence=confidence, type=type,
-                                       verified_by=verified_by)
+                                       verified_by=verified_by,
+                                       refs=_json.dumps(snap) if snap else "")
         return {"ok": True, "id": _enc_g(nid), "scope": "global",
                 "verified": bool(verified_by)}
 
     def verify(self, node_id) -> dict:
-        """Re-run the command stored in a node's verified_by. On pass, refresh
-        last_verified; on fail, drop confidence and flag it. Keeps facts honest
-        over time instead of letting them rot."""
-        from runner import run
+        """Re-check a memory's freshness: re-run its verified_by command (if any)
+        AND re-hash its file refs (if any). On all-good, refresh last_verified; on
+        a failed command or a changed/missing source file, flag it stale and drop
+        confidence. Keeps facts honest instead of letting them rot."""
+        import refs as _refs
         node = self.get(node_id)
         if not node:
             return {"ok": False, "error": "not found"}
+        tier, _ = parse_id(node_id)
+        base = (self.project.repo_root if tier == "p" and self.project else None)
+
         cmd = node.get("verified_by") or ""
-        if not cmd:
-            return {"ok": False, "error": "no verification command stored on this node"}
-        res = run(cmd, cwd=self._repo or Path.cwd())
+        cmd_res = None
+        if cmd:
+            from runner import run
+            cmd_res = run(cmd, cwd=base or Path.cwd())
+        ref_status = _refs.check(node.get("refs") or [], base)
+
+        if not cmd and not ref_status:
+            return {"ok": False, "error": "nothing to verify (no command or file refs)"}
+
+        stale = (cmd_res is not None and not cmd_res["ok"]) \
+            or any(r["status"] != "ok" for r in ref_status)
         now = self.global_store._clock()
-        if res["ok"]:
+        if not stale:
             self.update(node_id, last_verified=now)
-            return {"ok": True, "verified": True, "command": cmd, "output": res["output"]}
-        # failed re-verification: halve confidence, flag in sources
-        self.update(node_id, confidence=max(0.0, (node.get("confidence") or 1.0) * 0.5),
-                    sources=(node.get("sources") or "") + f" [re-verify FAILED {cmd}]")
-        return {"ok": True, "verified": False, "command": cmd,
-                "exit_code": res["exit_code"], "output": res["output"]}
+        else:
+            note = " [stale: " + ("cmd-failed " if cmd_res and not cmd_res["ok"] else "")
+            note += ",".join(f"{r['path']}:{r['status']}" for r in ref_status if r["status"] != "ok")
+            self.update(node_id, confidence=max(0.0, (node.get("confidence") or 1.0) * 0.5),
+                        sources=(node.get("sources") or "") + note + "]")
+        return {"ok": True, "stale": stale, "command": cmd or None,
+                "command_ok": (cmd_res["ok"] if cmd_res else None),
+                "refs": ref_status}
 
     @staticmethod
     def _strip(link):

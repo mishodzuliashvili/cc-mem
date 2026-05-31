@@ -134,7 +134,8 @@ class ProjectMemory:
                 label=meta.get("label", ""), importance=float(meta.get("importance", 1.0)),
                 scope="project", project=self.key, type=meta.get("type", "fact"),
                 sources=meta.get("sources", ""), confidence=float(meta.get("confidence", 1.0)),
-                verified_by=meta.get("verified_by", ""))
+                verified_by=meta.get("verified_by", ""),
+                refs=__import__("json").dumps(meta.get("refs", [])) if meta.get("refs") else "")
             self.uid2int[uid] = iid
             self.int2uid[iid] = uid
         if parsed:  # this repo actually has project memory — make it discoverable
@@ -160,7 +161,7 @@ class ProjectMemory:
     # -- writes (file is source of truth; in-memory store mirrors it) --
     def insert(self, content, summary="", label="", importance=1.0,
                links=None, sources="", confidence=1.0, type="fact",
-               verified_by="") -> str:
+               verified_by="", refs=None) -> str:
         uid = uuid.uuid4().hex[:12]
         now = self._clock()
         norm_links = [list(_norm_link(l)) for l in (links or [])
@@ -170,6 +171,7 @@ class ProjectMemory:
                 "confidence": float(confidence), "sources": sources,
                 "verified_by": verified_by,
                 "last_verified": now if verified_by else None,
+                "refs": refs or [],
                 "links": norm_links, "created_at": now}
         self.meta[uid] = meta
         self._path(uid).write_text(serialize(meta, content), encoding="utf-8")
@@ -181,7 +183,8 @@ class ProjectMemory:
         iid = self.store.insert(content=content, summary=summary, label=label,
                                 importance=importance, scope="project", type=type,
                                 project=self.key, sources=sources, confidence=confidence,
-                                verified_by=verified_by)
+                                verified_by=verified_by,
+                                refs=__import__("json").dumps(refs) if refs else "")
         self.uid2int[uid] = iid
         self.int2uid[iid] = uid
         for other, kind, weight in norm_links:
@@ -268,6 +271,7 @@ class ProjectMemory:
         # throwaway in-memory store.
         node["verified_by"] = self.meta[uid].get("verified_by", "")
         node["last_verified"] = self.meta[uid].get("last_verified")
+        node["refs"] = self.meta[uid].get("refs", [])
         node["neighbors"] = self._neighbors(uid)
         return node
 

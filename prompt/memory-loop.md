@@ -47,6 +47,18 @@ failed command, or the user corrects a mistake — and you then find what actual
 because Y; do Z instead"). This is how you stop repeating the same problems. Before
 starting a task you've plausibly done before, search memory for prior `gotcha`s first.
 
+**Tie file-derived memories to their source.** If a memory is derived from a file
+(a config value, an API in some module, a path), pass `refs=["path/to/file"]` to
+`memory_insert` (repo-relative for project scope). cc-mem hashes those files so it
+can later detect when they change and flag the memory stale. Prefer this over
+writing the path into the prose — prose paths can't be checked and silently rot.
+For empirically checkable claims, also pass `verify="<command>"`.
+
+**Re-verify stale recall.** When you recall a memory that carries `refs` or a
+`verify` command and you're about to rely on it, run `memory_verify` — if it reports
+stale (a source file changed or the command now fails), re-read the source and
+`memory_update` the memory before trusting it.
+
 **Find-or-update, don't pile up duplicates.** `memory_insert` checks for an existing
 near-duplicate first and will REFUSE, returning candidates — that's your cue to
 `memory_update` the existing node instead. Only pass `force=true` when the memory is

@@ -30,6 +30,8 @@ export const api = {
   updateNode: (id, fields) => req('PUT', `/nodes/${id}`, fields),
   deleteNode: (id) => req('DELETE', `/nodes/${id}`),
   graph: () => req('GET', '/graph'),
+  recheck: (node_id) => req('POST', '/recheck', { node_id }),
+  stale: () => req('GET', '/stale'),
   search: (query, mode = 'text', k = 20) => req('POST', '/search', { query, mode, k }),
   link: (src, dst, kind = 'related', weight = 1) =>
     req('POST', '/edges', { src, dst, kind, weight }),
