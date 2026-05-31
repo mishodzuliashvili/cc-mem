@@ -8,7 +8,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
 # Backend: venv python + local semantic embedder, against the real DB.
-CC_MEM_EMBEDDER=local "$HERE/.venv/bin/python" manage.py --port 8765 &
+# Pass extra args through, e.g.:  ./dev.sh --repo ~/code/myapp   (view that repo's
+# project memory instead of cc-mem's).
+CC_MEM_EMBEDDER=local "$HERE/.venv/bin/python" manage.py --port 8765 "$@" &
 API_PID=$!
 trap 'kill $API_PID 2>/dev/null' EXIT
 

@@ -34,12 +34,13 @@ _REPO = Path(__file__).resolve().parent.parent
 _DIST = _REPO / "ui" / "dist"
 
 brain_inst = None
+PROJECT_CWD = None  # which repo's project memory to attach (default: the launch cwd)
 
 
 def brain():
     global brain_inst
     if brain_inst is None:
-        brain_inst = Brain()  # global brain + this repo's project memory
+        brain_inst = Brain(cwd=PROJECT_CWD)  # global brain + a repo's project memory
     return brain_inst
 
 
@@ -319,9 +320,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(port: int = 8765):
-    ctx = brain().context()
-    print(f"[cc-mem api] global: {ctx['global_db']}")
-    print(f"[cc-mem api] project: {ctx['project_key'] or '(none — not in a git repo)'}")
+    # Don't construct the Brain here — that would embed project memory and load the
+    # model before we bind. Bind instantly; the Brain builds lazily on first request.
+    from graph_memory import default_db_path
+    print(f"[cc-mem api] global: {default_db_path()}")
+    print(f"[cc-mem api] project cwd: {PROJECT_CWD or '(launch dir)'}")
     served = "+ UI" if _DIST.exists() else "(API only — run Vite for the UI)"
     print(f"[cc-mem api] http://localhost:{port}  {served}")
     HTTPServer(("127.0.0.1", port), Handler).serve_forever()
