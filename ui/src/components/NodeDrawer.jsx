@@ -9,16 +9,34 @@ const BLANK = {
 
 const TYPES = ['fact', 'preference', 'decision', 'howto', 'gotcha', 'reference']
 
-// Render markdown, turning any legacy [[id]] prose references into clickable links
-// (click opens that node; if it was deleted, the drawer will just show "not found").
-// Note: relationships should live in edges, not prose — this only makes existing
-// [[id]] text navigable.
-function renderContent(content) {
-  const linked = content.replace(
+// Open a referenced file in the editor (vscode://). abspath comes from the backend.
+function fileHref(r) {
+  if (!r.abspath) return null
+  const line = r.lines ? `:${String(r.lines).split('-')[0]}` : ''
+  return `vscode://file/${r.abspath}${line}`
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Render markdown, turning [[id]] node references AND any mentioned file-ref path
+// into real, clickable links (node refs open the node; file refs open the file and
+// are styled by existence). Relationships still belong in edges, file deps in refs —
+// this just makes prose mentions live.
+function renderContent(content, refs = []) {
+  let html = content.replace(
     /\[\[([\w:.\-]+)\]\]/g,
     '<a class="noderef" data-ref="$1">$1</a>',
   )
-  return marked.parse(linked)
+  for (const r of refs) {
+    if (!r.path) continue
+    const href = fileHref(r)
+    const cls = `fileref ${r.exists === false ? 'missing' : ''}`
+    const anchor = href
+      ? `<a class="${cls}" href="${href}" title="${r.abspath || r.path}">${r.path}</a>`
+      : `<span class="${cls}">${r.path}</span>`
+    html = html.replace(new RegExp(escapeRe(r.path), 'g'), anchor)
+  }
+  return marked.parse(html)
 }
 
 export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash, projects = [] }) {
@@ -181,7 +199,7 @@ function ViewNode({ node, onOpenOther, onRemoveLink, flash }) {
           const ref = e.target.getAttribute && e.target.getAttribute('data-ref')
           if (ref) onOpenOther(ref)
         }}
-        dangerouslySetInnerHTML={{ __html: renderContent(node.content || '') }}
+        dangerouslySetInnerHTML={{ __html: renderContent(node.content || '', node.refs || []) }}
       />
 
       {hasFreshness && (
@@ -197,15 +215,18 @@ function ViewNode({ node, onOpenOther, onRemoveLink, flash }) {
           {node.verified_by && <div className="metaline">verify cmd: <code>{node.verified_by}</code></div>}
           {(node.refs || []).map((r, i) => {
             const live = recheck?.refs?.find((x) => x.path === r.path)
-            const savedAt = r.mtime ? new Date(r.mtime * 1000).toLocaleDateString() : null
+            const href = fileHref(r)
             const liveAt = live?.mtime ? new Date(live.mtime * 1000).toLocaleString() : null
             return (
               <div className="refrow" key={i}>
-                <code>{r.path}{r.lines ? `:${r.lines}` : ''}</code>
+                <span className={`dot ${r.exists === false ? 'off' : 'on'}`}
+                  title={r.exists === false ? 'file missing' : 'file exists'} />
+                {href
+                  ? <a className={`fileref ${r.exists === false ? 'missing' : ''}`}
+                       href={href} title={`open ${r.abspath}`}>{r.path}{r.lines ? `:${r.lines}` : ''}</a>
+                  : <code>{r.path}{r.lines ? `:${r.lines}` : ''}</code>}
                 {live?.status && <span className={`refstatus ${live.status}`}>{live.status}</span>}
-                <span className="meta">
-                  {liveAt ? `modified ${liveAt}` : savedAt ? `saved @ ${savedAt}` : ''}
-                </span>
+                {liveAt && <span className="meta">modified {liveAt}</span>}
               </div>
             )
           })}

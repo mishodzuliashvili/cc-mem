@@ -91,6 +91,14 @@ td.summary { color: var(--muted); max-width: 460px; overflow: hidden; text-overf
 .refstatus.ok { background: #1f6feb22; color: var(--blue); }
 .refstatus.changed, .refstatus.missing { background: #ff7b7222; color: var(--danger); }
 .metaline.stale { color: var(--danger); }
+.fileref { color: var(--blue); cursor: pointer; text-decoration: none;
+           border-bottom: 1px dotted var(--blue); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.fileref:hover { background: #1f6feb22; }
+.fileref.missing { color: var(--danger); border-bottom-color: var(--danger); }
+.md .fileref { background: #1f6feb18; padding: 0 3px; border-radius: 4px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.dot.on { background: var(--accent); }
+.dot.off { background: var(--danger); }
 
 .empty { color: var(--faint); font-style: italic; padding: 30px; text-align: center; }
 

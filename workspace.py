@@ -111,6 +111,7 @@ class Workspace:
         return {"nodes": rows, "shown": len(rows), "total": len(rows)}
 
     def get(self, node_id):
+        import refs as _refs
         tier, raw = _parse(node_id)
         if tier == "g":
             node = self.global_store.get(raw)
@@ -118,6 +119,7 @@ class Workspace:
                 return None
             node["id"] = _g(raw)
             node["tier"] = "global"
+            node["refs"] = _refs.enrich(node.get("refs") or [], None)
             node["neighbors"] = [{**nb, "id": _g(nb["id"])}
                                  for nb in self.global_store.expand(raw)["neighbors"]]
             return node
@@ -130,6 +132,7 @@ class Workspace:
         node["id"] = _p(raw)
         node["project"] = pm.key
         node["tier"] = "project"
+        node["refs"] = _refs.enrich(node.get("refs") or [], pm.repo_root)
         node["neighbors"] = [{**nb, "id": _p(nb["id"])} for nb in node.get("neighbors", [])]
         return node
 

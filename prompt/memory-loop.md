@@ -47,11 +47,13 @@ failed command, or the user corrects a mistake — and you then find what actual
 because Y; do Z instead"). This is how you stop repeating the same problems. Before
 starting a task you've plausibly done before, search memory for prior `gotcha`s first.
 
-**Tie file-derived memories to their source.** If a memory is derived from a file
-(a config value, an API in some module, a path), pass `refs=["path/to/file"]` to
-`memory_insert` (repo-relative for project scope). cc-mem hashes those files so it
-can later detect when they change and flag the memory stale. Prefer this over
-writing the path into the prose — prose paths can't be checked and silently rot.
+**Tie file-derived memories to their source — files are REFS, not prose.** Whenever a
+memory mentions or is derived from a file (a config value, an API in some module, a
+path), list every such file in `refs=["path/to/file"]` on `memory_insert` (repo-relative
+for project scope; you may also write the path in the content, but it MUST also be in
+`refs`). cc-mem then hashes those files — so they become real, clickable, existence-
+checked links in the UI, AND it can detect when a source changes and flag the memory
+stale. A path that lives only in prose is unverifiable dead text that silently rots.
 For empirically checkable claims, also pass `verify="<command>"`.
 
 **Re-verify stale recall.** When you recall a memory that carries `refs` or a

@@ -76,6 +76,17 @@ def snapshot(refs, base, now) -> list[dict]:
     return out
 
 
+def enrich(refs, base) -> list[dict]:
+    """Add resolved absolute path + current existence to stored refs (cheap stat,
+    no hashing) so the UI can render them as real, openable, checkable file links
+    without a full re-check."""
+    out = []
+    for r in refs or []:
+        p = resolve(r["path"], base)
+        out.append({**r, "abspath": str(p), "exists": p.is_file()})
+    return out
+
+
 def check(refs, base) -> list[dict]:
     """Re-check each ref. Fast path: if mtime+size are unchanged the content is
     unchanged (status ok, no read). Otherwise re-hash to decide ok vs changed —

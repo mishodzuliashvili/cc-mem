@@ -226,12 +226,14 @@ class Brain:
 
     # ── reads ────────────────────────────────────────────────────────────────
     def get(self, node_id):
+        import refs as _refs
         tier, raw = parse_id(node_id)
         if tier == "p":
             node = self.project.get(raw) if self.project else None
             if not node:
                 return None
             node = self._wrap(node, "p")
+            node["refs"] = _refs.enrich(node.get("refs") or [], self.project.repo_root)
             node["neighbors"] = [{**nb, "id": _enc_p(nb["id"])}
                                  for nb in node.get("neighbors", [])]
             return node
@@ -239,6 +241,7 @@ class Brain:
         if not node:
             return None
         node = self._wrap(node, "g")
+        node["refs"] = _refs.enrich(node.get("refs") or [], None)
         node["neighbors"] = [
             {**nb, "id": _enc_g(nb["id"])}
             for nb in self.global_store.expand(raw)["neighbors"]
