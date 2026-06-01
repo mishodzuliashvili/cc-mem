@@ -57,9 +57,13 @@ stale. A path that lives only in prose is unverifiable dead text that silently r
 For empirically checkable claims, also pass `verify="<command>"`.
 
 **Re-verify stale recall.** When you recall a memory that carries `refs` or a
-`verify` command and you're about to rely on it, run `memory_verify` — if it reports
-stale (a source file changed or the command now fails), re-read the source and
-`memory_update` the memory before trusting it.
+`verify` command and you're about to rely on it, run `memory_verify`. It tells you
+WHICH way it's stale per ref:
+  - `changed` (content drifted) → re-read the file and `memory_update` the memory.
+  - `missing` (file renamed/moved/deleted) → call `memory_relocate` first: it finds
+    the file by content hash at its new path and re-links it automatically. If that
+    finds nothing (the file also changed), use the memory's own content/keywords to
+    search the repo for where it went, then `memory_update` the ref/path.
 
 **Find-or-update, don't pile up duplicates.** `memory_insert` checks for an existing
 near-duplicate first and will REFUSE, returning candidates — that's your cue to

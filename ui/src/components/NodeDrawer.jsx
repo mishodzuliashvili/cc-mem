@@ -203,8 +203,25 @@ function ViewNode({ node, onOpenOther, onRemoveLink, flash }) {
     try {
       const r = await api.recheck(node.id)
       setRecheck(r)
-      flash(r.stale ? 'stale — source changed' : 'still fresh ✓', r.stale)
+      const missing = r.refs?.some((x) => x.status === 'missing')
+      const changed = r.refs?.some((x) => x.status === 'changed')
+      flash(missing ? 'source MISSING (renamed/deleted)'
+        : changed ? 'source changed (content drifted)' : 'still fresh ✓', r.stale)
     } catch (e) { flash(e.message, true) } finally { setChecking(false) }
+  }
+
+  const findMoved = async () => {
+    try {
+      const r = await api.relocate(node.id, true)
+      const done = r.refs?.filter((x) => x.status === 'relinked')
+      if (done?.length) flash(`re-linked to ${done.map((x) => x.new_path).join(', ')}`)
+      else {
+        const cand = r.refs?.flatMap((x) => x.candidates || [])
+        flash(cand?.length ? `candidates: ${cand.join(', ')}` : 'no matching file found — search by content', !cand?.length)
+      }
+      api.getNode(node.id) // refresh handled by parent live tick; recheck to update view
+      doRecheck()
+    } catch (e) { flash(e.message, true) }
   }
 
   return (
@@ -256,9 +273,22 @@ function ViewNode({ node, onOpenOther, onRemoveLink, flash }) {
               </div>
             )
           })}
-          {recheck && <div className={`metaline ${recheck.stale ? 'stale' : ''}`}>
-            {recheck.stale ? '⚠ stale — re-read the source and update this memory'
-                           : 'still fresh ✓'}</div>}
+          {recheck && (() => {
+            const missing = recheck.refs?.some((x) => x.status === 'missing')
+            const changed = recheck.refs?.some((x) => x.status === 'changed')
+            return (
+              <div className={`metaline ${recheck.stale ? 'stale' : ''}`}>
+                {missing ? '⚠ source missing (renamed or deleted)'
+                  : changed ? '⚠ source changed — re-read it and update this memory'
+                  : 'still fresh ✓'}
+                {missing && (
+                  <button className="btn ghost" style={{ marginLeft: 8 }} onClick={findMoved}>
+                    Find moved file
+                  </button>
+                )}
+              </div>
+            )
+          })()}
         </div>
       )}
 

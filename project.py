@@ -200,7 +200,7 @@ class ProjectMemory:
         if content is None:
             content = body
         for k in ("label", "summary", "importance", "confidence", "sources", "type",
-                  "verified_by", "last_verified"):
+                  "verified_by", "last_verified", "refs"):
             if fields.get(k) is not None:
                 meta[k] = fields[k]
         self._path(uid).write_text(serialize(meta, content), encoding="utf-8")

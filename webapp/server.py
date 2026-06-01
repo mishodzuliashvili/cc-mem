@@ -121,6 +121,10 @@ def api_suggest(_m, q, _b, node_id):
     return {"candidates": ws().suggest_links(node_id, int(q.get("k", ["5"])[0]))}
 
 
+def api_relocate(_m, _q, body):
+    return ws().relocate(body.get("node_id"), bool(body.get("apply", True)))
+
+
 def api_stale(_m, _q, _b):
     items = ws().stale_scan()
     return {"count": len(items), "stale": items}
@@ -237,6 +241,7 @@ ROUTES = [
     ("GET", r"^/api/stale$", api_stale),
     ("GET", rf"^/api/suggest/{_ID}$", api_suggest),
     ("POST", r"^/api/recheck$", api_recheck),
+    ("POST", r"^/api/relocate$", api_relocate),
     ("POST", r"^/api/search$", api_search),
     ("POST", r"^/api/edges$", api_create_edge),
     ("DELETE", r"^/api/edges$", api_delete_edge),

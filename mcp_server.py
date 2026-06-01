@@ -253,6 +253,24 @@ TOOLS = [
         },
     },
     {
+        "name": "memory_relocate",
+        "description": (
+            "Recover a memory's MISSING file refs (renamed/moved). Hunts the repo "
+            "for a file whose content hash matches the stored one — the same file at "
+            "a new path — and re-links unambiguous matches in place. Use when "
+            "memory_verify reports a ref 'missing'. If no hash match (the file also "
+            "changed), the memory's content has the keywords to search for it "
+            "yourself, then memory_update the path. " + _ID_NOTE
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"node_id": {"type": "string"},
+                           "apply": {"type": "boolean", "default": True,
+                                     "description": "Re-link unambiguous matches (else just report candidates)."}},
+            "required": ["node_id"],
+        },
+    },
+    {
         "name": "memory_suggest_links",
         "description": (
             "Find existing nodes similar to this one that are NOT linked to it yet — "
@@ -334,6 +352,8 @@ def handle_tool(name: str, args: dict) -> dict:
     if name == "memory_recall":
         return b.recall(args["query"], int(args.get("k", 6)),
                         int(args.get("full", 3)), scope=args.get("scope", "auto"))
+    if name == "memory_relocate":
+        return b.relocate(args["node_id"], bool(args.get("apply", True)))
     if name == "memory_suggest_links":
         hits = b.suggest_links(args["node_id"], int(args.get("k", 5)))
         return {"count": len(hits), "candidates": hits}

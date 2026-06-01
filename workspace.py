@@ -232,6 +232,40 @@ class Workspace:
         return {"ok": True, "stale": stale, "command": cmd or None,
                 "command_ok": (cmd_res["ok"] if cmd_res else None), "refs": ref_status}
 
+    def relocate(self, node_id, apply=True) -> dict:
+        """Recover a missing (renamed/moved) source by content-hash match; re-link
+        unambiguous matches in place."""
+        import os
+        import json as _json
+        import refs as _refs
+        node = self.get(node_id)
+        if not node:
+            return {"ok": False, "error": "not found"}
+        tier, raw = _parse(node_id)
+        base = self._uuid2proj[raw].repo_root if tier == "p" and raw in self._uuid2proj else None
+        now = self.global_store._clock()
+        result, new_refs, relinked = [], [], False
+        for r in node.get("refs") or []:
+            if r.get("exists"):
+                new_refs.append(_refs.strip(r)); continue
+            root = base or Path(r.get("abspath", r["path"])).parent
+            matches = _refs.find_by_hash(r.get("hash"), r.get("size"), root, r.get("lines"))
+            rel = [os.path.relpath(m, base) if base else m for m in matches]
+            if apply and len(rel) == 1:
+                snap = _refs.snapshot([{"path": rel[0], "lines": r.get("lines")}], base, now)[0]
+                new_refs.append(snap); relinked = True
+                result.append({"path": r["path"], "status": "relinked", "new_path": rel[0]})
+            else:
+                new_refs.append(_refs.strip(r))
+                result.append({"path": r["path"],
+                               "status": "candidates" if rel else "not_found", "candidates": rel})
+        if apply and relinked:
+            if tier == "p" and raw in self._uuid2proj:
+                self._uuid2proj[raw].update(raw, refs=new_refs)
+            else:
+                self.global_store.update_node(raw, refs=_json.dumps(new_refs))
+        return {"ok": True, "relinked": relinked, "refs": result}
+
     def stale_scan(self):
         """Hash every memory's file refs and return the ones whose source files
         changed or vanished. File-only (never runs verified_by commands en masse)."""

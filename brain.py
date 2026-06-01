@@ -275,6 +275,51 @@ class Brain:
         return [h for h in hits
                 if h["id"] not in existing and h.get("similarity", 0) >= 0.25][:k]
 
+    def _ref_base(self, node_id, ref=None):
+        tier, _ = parse_id(node_id)
+        if tier == "p" and self.project:
+            return self.project.repo_root
+        return None
+
+    def _set_refs(self, node_id, new_refs):
+        import json as _json
+        tier, raw = parse_id(node_id)
+        if tier == "p" and self.project:
+            self.project.update(raw, refs=new_refs)
+        else:
+            self.global_store.update_node(raw, refs=_json.dumps(new_refs))
+
+    def relocate(self, node_id, apply=True) -> dict:
+        """For any MISSING ref (file renamed/moved), hunt the repo for a file whose
+        content hash matches — that's the same file at a new path. With apply=True,
+        re-link unambiguous matches in place (and re-snapshot). Returns what it found
+        / did so a 'missing' source can be recovered instead of rotting."""
+        import refs as _refs
+        node = self.get(node_id)
+        if not node:
+            return {"ok": False, "error": "not found"}
+        base = self._ref_base(node_id)
+        now = self.global_store._clock()
+        result, new_refs, relinked = [], [], False
+        for r in node.get("refs") or []:
+            if r.get("exists"):
+                new_refs.append(_refs.strip(r)); continue
+            root = base or Path(r.get("abspath", r["path"])).parent
+            matches = _refs.find_by_hash(r.get("hash"), r.get("size"), root, r.get("lines"))
+            rel = [os.path.relpath(m, base) if base else m for m in matches]
+            if apply and len(rel) == 1:
+                snap = _refs.snapshot([{"path": rel[0], "lines": r.get("lines")}], base, now)[0]
+                new_refs.append(snap); relinked = True
+                result.append({"path": r["path"], "status": "relinked", "new_path": rel[0]})
+            else:
+                new_refs.append(_refs.strip(r))
+                result.append({"path": r["path"],
+                               "status": "candidates" if rel else "not_found",
+                               "candidates": rel})
+        if apply and relinked:
+            self._set_refs(node_id, new_refs)
+        return {"ok": True, "relinked": relinked, "refs": result}
+
     def recall(self, query, k=6, full=3, scope="auto"):
         """One-shot 'gather the relevant neighborhood': run the cold-start search,
         then return compact briefs for the top `k` AND the full content of the top
