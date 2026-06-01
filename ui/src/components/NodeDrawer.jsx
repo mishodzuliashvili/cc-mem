@@ -210,20 +210,6 @@ function ViewNode({ node, onOpenOther, onRemoveLink, flash }) {
     } catch (e) { flash(e.message, true) } finally { setChecking(false) }
   }
 
-  const findMoved = async () => {
-    try {
-      const r = await api.relocate(node.id, true)
-      const done = r.refs?.filter((x) => x.status === 'relinked')
-      if (done?.length) flash(`re-linked to ${done.map((x) => x.new_path).join(', ')}`)
-      else {
-        const cand = r.refs?.flatMap((x) => x.candidates || [])
-        flash(cand?.length ? `candidates: ${cand.join(', ')}` : 'no matching file found — search by content', !cand?.length)
-      }
-      api.getNode(node.id) // refresh handled by parent live tick; recheck to update view
-      doRecheck()
-    } catch (e) { flash(e.message, true) }
-  }
-
   return (
     <>
       <span className={`pill ${node.scope}`}>{node.scope}</span>{' '}
@@ -278,14 +264,9 @@ function ViewNode({ node, onOpenOther, onRemoveLink, flash }) {
             const changed = recheck.refs?.some((x) => x.status === 'changed')
             return (
               <div className={`metaline ${recheck.stale ? 'stale' : ''}`}>
-                {missing ? '⚠ source missing (renamed or deleted)'
+                {missing ? '⚠ source missing (renamed or deleted) — ask Claude to find it and update this memory'
                   : changed ? '⚠ source changed — re-read it and update this memory'
                   : 'still fresh ✓'}
-                {missing && (
-                  <button className="btn ghost" style={{ marginLeft: 8 }} onClick={findMoved}>
-                    Find moved file
-                  </button>
-                )}
               </div>
             )
           })()}

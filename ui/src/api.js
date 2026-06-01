@@ -32,6 +32,8 @@ export const api = {
   graph: () => req('GET', '/graph'),
   recheck: (node_id) => req('POST', '/recheck', { node_id }),
   stale: () => req('GET', '/stale'),
+  // file relocation is done by Claude with its own grep/glob, then memory_update —
+  // cc-mem doesn't search the filesystem itself.
   suggest: (id, k = 5) => req('GET', `/suggest/${encodeURIComponent(id)}?k=${k}`),
   search: (query, mode = 'text', k = 20) => req('POST', '/search', { query, mode, k }),
   link: (src, dst, kind = 'related', weight = 1) =>

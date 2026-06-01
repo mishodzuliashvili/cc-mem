@@ -14,42 +14,12 @@ refs are absolute (machine-specific — same trade-off as global ids).
 from __future__ import annotations
 
 import hashlib
-import os
 from pathlib import Path
-
-# Dirs not worth scanning when hunting for a moved file.
-_SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "dist", "build",
-              "__pycache__", ".cc-mem", ".next", ".cache", "target"}
 
 
 def strip(ref: dict) -> dict:
     """Drop read-only enrichments (abspath/exists) before persisting a ref."""
     return {k: ref.get(k) for k in ("path", "lines", "hash", "mtime", "size", "checked_at")}
-
-
-def find_by_hash(stored_hash, stored_size, root, lines=None, cap=20000) -> list[str]:
-    """Hunt under `root` for a file whose content hash matches `stored_hash` — i.e.
-    the same file after a rename/move. Size pre-filter (when known) keeps it cheap:
-    only files of the exact stored size get hashed. Returns matching paths."""
-    root = Path(root)
-    if not stored_hash or not root.exists():
-        return []
-    out, n = [], 0
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
-        for fn in filenames:
-            n += 1
-            if n > cap:
-                return out
-            p = Path(dirpath) / fn
-            try:
-                if lines is None and stored_size is not None and p.stat().st_size != stored_size:
-                    continue
-            except OSError:
-                continue
-            if file_hash(p, lines) == stored_hash:
-                out.append(str(p))
-    return out
 
 
 def resolve(path: str, base: str | Path | None) -> Path:

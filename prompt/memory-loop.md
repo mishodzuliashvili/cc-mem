@@ -56,14 +56,16 @@ checked links in the UI, AND it can detect when a source changes and flag the me
 stale. A path that lives only in prose is unverifiable dead text that silently rots.
 For empirically checkable claims, also pass `verify="<command>"`.
 
-**Re-verify stale recall.** When you recall a memory that carries `refs` or a
-`verify` command and you're about to rely on it, run `memory_verify`. It tells you
-WHICH way it's stale per ref:
-  - `changed` (content drifted) → re-read the file and `memory_update` the memory.
-  - `missing` (file renamed/moved/deleted) → call `memory_relocate` first: it finds
-    the file by content hash at its new path and re-links it automatically. If that
-    finds nothing (the file also changed), use the memory's own content/keywords to
-    search the repo for where it went, then `memory_update` the ref/path.
+**Re-verify stale recall — then fix it with YOUR OWN tools.** When you recall a memory
+that carries `refs` or a `verify` command and you're about to rely on it, run
+`memory_verify`. It tells you WHICH way each ref is stale; cc-mem does NOT search the
+filesystem for you — that's your job, with the tools you already have:
+  - `changed` (content drifted) → Read the file, and `memory_update` the memory's
+    content/summary to match.
+  - `missing` (file renamed/moved/deleted) → use Grep/Glob and the memory's own
+    content (it's full of keywords — symbols, strings, the old path) to locate where
+    that code/file went, then `memory_update(refs=["<new path>"])` to re-point it
+    (the new path is re-hashed). If it's truly gone, update or `memory_delete` it.
 
 **Find-or-update, don't pile up duplicates.** `memory_insert` checks for an existing
 near-duplicate first and will REFUSE, returning candidates — that's your cue to

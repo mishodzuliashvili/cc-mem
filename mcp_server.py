@@ -194,7 +194,9 @@ TOOLS = [
             "duplicate). Use this when the user corrects you, or you verify a better "
             "version of something already stored. Only pass the fields you're "
             "changing; the embedding is recomputed if text changes. Bump `confidence` "
-            "and note what changed in `sources`. " + _ID_NOTE
+            "and note what changed in `sources`. Pass `refs` to re-point this memory "
+            "at the file(s) it now depends on — e.g. after YOU located a renamed file "
+            "with grep/glob; they're re-hashed so freshness tracking continues. " + _ID_NOTE
         ),
         "inputSchema": {
             "type": "object",
@@ -204,6 +206,8 @@ TOOLS = [
                 "label": {"type": "string"}, "importance": {"type": "number"},
                 "confidence": {"type": "number"}, "sources": {"type": "string"},
                 "type": {"type": "string", "description": "fact|preference|decision|howto|gotcha|reference"},
+                "refs": {"type": "array", "items": {"type": "string"},
+                         "description": "Replacement file paths this memory depends on (re-hashed)."},
             },
             "required": ["node_id"],
         },
@@ -250,24 +254,6 @@ TOOLS = [
                 "scope": {"type": "string", "default": "auto"},
             },
             "required": ["query"],
-        },
-    },
-    {
-        "name": "memory_relocate",
-        "description": (
-            "Recover a memory's MISSING file refs (renamed/moved). Hunts the repo "
-            "for a file whose content hash matches the stored one — the same file at "
-            "a new path — and re-links unambiguous matches in place. Use when "
-            "memory_verify reports a ref 'missing'. If no hash match (the file also "
-            "changed), the memory's content has the keywords to search for it "
-            "yourself, then memory_update the path. " + _ID_NOTE
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {"node_id": {"type": "string"},
-                           "apply": {"type": "boolean", "default": True,
-                                     "description": "Re-link unambiguous matches (else just report candidates)."}},
-            "required": ["node_id"],
         },
     },
     {
@@ -341,7 +327,7 @@ def handle_tool(name: str, args: dict) -> dict:
         return b.verify(args["node_id"])
     if name == "memory_update":
         fields = {k: args.get(k) for k in
-                  ("content", "summary", "label", "importance", "confidence", "sources", "type")}
+                  ("content", "summary", "label", "importance", "confidence", "sources", "type", "refs")}
         node = b.update(args["node_id"], **fields)
         return {"ok": True, "node": node} if node else {"ok": False, "error": "not found"}
     if name == "memory_delete":
@@ -352,8 +338,6 @@ def handle_tool(name: str, args: dict) -> dict:
     if name == "memory_recall":
         return b.recall(args["query"], int(args.get("k", 6)),
                         int(args.get("full", 3)), scope=args.get("scope", "auto"))
-    if name == "memory_relocate":
-        return b.relocate(args["node_id"], bool(args.get("apply", True)))
     if name == "memory_suggest_links":
         hits = b.suggest_links(args["node_id"], int(args.get("k", 5)))
         return {"count": len(hits), "candidates": hits}
