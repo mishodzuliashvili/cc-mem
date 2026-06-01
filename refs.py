@@ -28,6 +28,16 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()[:16]
 
 
+def file_meta(path: Path):
+    """(mtime, size) or None if the file is gone. A cheap pre-filter: if both are
+    unchanged the content is unchanged, so we can skip re-hashing."""
+    try:
+        st = path.stat()
+        return st.st_mtime, st.st_size
+    except OSError:
+        return None
+
+
 def file_hash(path: Path, lines: str | None = None) -> str | None:
     """Short content hash of a file, or of a 'start-end' line range. None if the
     file is missing."""
@@ -52,21 +62,39 @@ def normalize(ref) -> dict:
 
 
 def snapshot(refs, base, now) -> list[dict]:
-    """Compute stored refs (path + lines + current hash) at save time."""
+    """Compute stored refs (path + lines + content hash + mtime/size) at save time."""
     out = []
     for ref in refs or []:
         r = normalize(ref)
+        p = resolve(r["path"], base)
+        meta = file_meta(p)
         out.append({"path": r["path"], "lines": r["lines"],
-                    "hash": file_hash(resolve(r["path"], base), r["lines"]),
+                    "hash": file_hash(p, r["lines"]),
+                    "mtime": meta[0] if meta else None,
+                    "size": meta[1] if meta else None,
                     "checked_at": now})
     return out
 
 
 def check(refs, base) -> list[dict]:
-    """Recompute each ref's hash now and compare to the stored one."""
+    """Re-check each ref. Fast path: if mtime+size are unchanged the content is
+    unchanged (status ok, no read). Otherwise re-hash to decide ok vs changed —
+    so a touch/checkout that didn't change content won't false-flag. Returns the
+    file's current mtime too, for display."""
     res = []
     for r in refs or []:
-        cur = file_hash(resolve(r["path"], base), r.get("lines"))
-        status = "missing" if cur is None else ("ok" if cur == r.get("hash") else "changed")
-        res.append({"path": r["path"], "lines": r.get("lines"), "status": status})
+        p = resolve(r["path"], base)
+        meta = file_meta(p)
+        if meta is None:
+            res.append({"path": r["path"], "lines": r.get("lines"),
+                        "status": "missing", "mtime": None})
+            continue
+        mtime, size = meta
+        if r.get("mtime") == mtime and r.get("size") == size and r.get("mtime") is not None:
+            status = "ok"  # unchanged metadata -> unchanged content, skip hashing
+        else:
+            cur = file_hash(p, r.get("lines"))
+            status = "ok" if cur == r.get("hash") else "changed"
+        res.append({"path": r["path"], "lines": r.get("lines"),
+                    "status": status, "mtime": mtime})
     return res

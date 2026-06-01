@@ -196,11 +196,16 @@ function ViewNode({ node, onOpenOther, onRemoveLink, flash }) {
           </p>
           {node.verified_by && <div className="metaline">verify cmd: <code>{node.verified_by}</code></div>}
           {(node.refs || []).map((r, i) => {
-            const st = recheck?.refs?.find((x) => x.path === r.path)?.status
+            const live = recheck?.refs?.find((x) => x.path === r.path)
+            const savedAt = r.mtime ? new Date(r.mtime * 1000).toLocaleDateString() : null
+            const liveAt = live?.mtime ? new Date(live.mtime * 1000).toLocaleString() : null
             return (
               <div className="refrow" key={i}>
                 <code>{r.path}{r.lines ? `:${r.lines}` : ''}</code>
-                {st && <span className={`refstatus ${st}`}>{st}</span>}
+                {live?.status && <span className={`refstatus ${live.status}`}>{live.status}</span>}
+                <span className="meta">
+                  {liveAt ? `modified ${liveAt}` : savedAt ? `saved @ ${savedAt}` : ''}
+                </span>
               </div>
             )
           })}
