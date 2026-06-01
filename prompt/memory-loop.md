@@ -73,9 +73,14 @@ you find a stored fact wrong/outdated: `memory_search` to find the node, then
 `sources`). `memory_delete` only when truly obsolete/superseded. The store should
 always reflect the user's latest validated input — especially `preference` nodes.
 
-**5. Reinforce structure.** When two memories proved useful together,
-`memory_reinforce` their edge so the graph's shape comes to mirror how knowledge is
-actually used.
+**5. Connect & reinforce — grow the graph, don't just fill it.** Connecting existing
+memories is as valuable as adding new ones. Whenever you notice two memories are
+related — while recalling, exploring, or about to add a near-duplicate — link them
+with `memory_reinforce` (it creates the edge if absent, strengthens it if present;
+same tier only). You don't have to have just created them. To find connections you
+might be missing, call `memory_suggest_links` on a node — it returns similar nodes
+that aren't linked yet; reinforce the ones that genuinely relate. A denser, well-
+connected graph recalls far better than a pile of isolated nodes.
 
 **Relate memories through EDGES, never through prose ids.** Connect related memories
 with `links` (on insert) / `memory_reinforce` — those edges drive recall and are

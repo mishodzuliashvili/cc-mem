@@ -259,6 +259,22 @@ class Brain:
                 out.append(node)
         return out
 
+    def suggest_links(self, node_id, k=5):
+        """Find nodes most similar to this one that AREN'T linked to it yet —
+        candidates worth connecting, so the graph gets denser/more useful over
+        time. Same tier only (links don't cross tiers). Returns compact briefs."""
+        node = self.get(node_id)
+        if not node:
+            return []
+        text = " ".join(p for p in (node.get("label"), node.get("summary"),
+                                     node.get("content")) if p)
+        tier, _ = parse_id(node_id)
+        scope = "project" if tier == "p" else "global"
+        existing = {nb["id"] for nb in node.get("neighbors", [])} | {node_id}
+        hits = self.search(text, k + len(existing) + 3, scope=scope)
+        return [h for h in hits
+                if h["id"] not in existing and h.get("similarity", 0) >= 0.25][:k]
+
     def recall(self, query, k=6, full=3, scope="auto"):
         """One-shot 'gather the relevant neighborhood': run the cold-start search,
         then return compact briefs for the top `k` AND the full content of the top

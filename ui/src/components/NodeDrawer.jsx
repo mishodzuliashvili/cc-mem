@@ -45,6 +45,7 @@ export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash,
   const [editing, setEditing] = useState(isNew)
   const [form, setForm] = useState(BLANK)
   const [linkTarget, setLinkTarget] = useState('')
+  const [suggestions, setSuggestions] = useState([])
 
   useEffect(() => {
     if (isNew) { setNode(null); setForm(BLANK); setEditing(true); return }
@@ -91,14 +92,23 @@ export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash,
     } catch (e) { flash(e.message, true) }
   }
 
-  const addLink = async () => {
-    const dst = linkTarget.trim()
+  const linkTo = async (dst) => {
     if (!dst) return
     try {
       await api.link(id, dst, 'related', 1)
       flash(`linked ${id} ↔ ${dst}`)
       setLinkTarget('')
+      setSuggestions((s) => s.filter((c) => c.id !== dst))
       setNode(await api.getNode(id)); onChanged()
+    } catch (e) { flash(e.message, true) }
+  }
+  const addLink = () => linkTo(linkTarget.trim())
+
+  const loadSuggestions = async () => {
+    try {
+      const r = await api.suggest(id)
+      setSuggestions(r.candidates)
+      if (!r.candidates.length) flash('no unlinked similar nodes found')
     } catch (e) { flash(e.message, true) }
   }
 
@@ -133,15 +143,31 @@ export default function NodeDrawer({ id, onClose, onChanged, onOpenOther, flash,
           )}
 
           {!isNew && !editing && node && (
-            <div className="linkrow">
-              <input
-                placeholder="link to id (same tier, e.g. p:ab12)…"
-                value={linkTarget}
-                onChange={(e) => setLinkTarget(e.target.value)}
-                style={{ width: 220 }}
-              />
-              <button className="btn ghost" onClick={addLink}>+ link</button>
-            </div>
+            <>
+              <div className="linkrow">
+                <input
+                  placeholder="link to id (same tier, e.g. p:ab12)…"
+                  value={linkTarget}
+                  onChange={(e) => setLinkTarget(e.target.value)}
+                  style={{ width: 220 }}
+                />
+                <button className="btn ghost" onClick={addLink}>+ link</button>
+                <button className="btn ghost" onClick={loadSuggestions}>Suggest connections</button>
+              </div>
+              {suggestions.length > 0 && (
+                <div className="suggestions">
+                  <p className="metaline"><b>Suggested connections</b> (similar, not yet linked)</p>
+                  {suggestions.map((c) => (
+                    <div className="neighbor" key={c.id}>
+                      <a onClick={() => onOpenOther(c.id)}>{c.label || c.summary}</a>
+                      <span className="spacer" style={{ flex: 1 }} />
+                      <span className="w">{(c.similarity || 0).toFixed(2)}</span>
+                      <button className="btn ghost" onClick={() => linkTo(c.id)}>+ link</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 

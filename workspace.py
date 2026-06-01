@@ -167,6 +167,26 @@ class Workspace:
         hits.sort(key=lambda h: h.get("score", 0), reverse=True)
         return hits[:k]
 
+    def suggest_links(self, node_id, k=5):
+        """Similar nodes not yet linked to this one — connection candidates. Same
+        tier/project only (links don't cross)."""
+        node = self.get(node_id)
+        if not node:
+            return []
+        text = " ".join(p for p in (node.get("label"), node.get("summary"),
+                                     node.get("content")) if p)
+        tier, raw = _parse(node_id)
+        existing = {nb["id"] for nb in node.get("neighbors", [])} | {node_id}
+        if tier == "g":
+            hits = [{**h, "id": _g(h["id"]), "tier": "global"}
+                    for h in self.global_store.search(text, k + len(existing) + 3)]
+        else:
+            pm = self._uuid2proj.get(raw)
+            hits = ([{**h, "id": _p(h["id"]), "tier": "project", "project": pm.key}
+                     for h in pm.search(text, k + len(existing) + 3)] if pm else [])
+        return [h for h in hits
+                if h["id"] not in existing and h.get("similarity", 0) >= 0.25][:k]
+
     # ── writes ──────────────────────────────────────────────────────────────
     def insert(self, content, summary="", label="", importance=1.0, type="fact",
                scope="global", project="", sources="", confidence=1.0):

@@ -253,10 +253,28 @@ TOOLS = [
         },
     },
     {
+        "name": "memory_suggest_links",
+        "description": (
+            "Find existing nodes similar to this one that are NOT linked to it yet — "
+            "connection candidates. Use it to densify the graph: when you notice (or "
+            "want to check) that memories are related, get suggestions here and "
+            "memory_reinforce the real ones. Connecting existing knowledge is as "
+            "valuable as adding new. " + _ID_NOTE
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"node_id": {"type": "string"},
+                           "k": {"type": "integer", "default": 5}},
+            "required": ["node_id"],
+        },
+    },
+    {
         "name": "memory_reinforce",
         "description": (
-            "LEARN THE GRAPH'S SHAPE: strengthen (or create) the edge between two "
-            "nodes (same tier) that proved useful together. Symmetric. " + _ID_NOTE
+            "CONNECT or strengthen: create (or strengthen) the edge between two "
+            "EXISTING nodes (same tier) — use it any time you see a relationship "
+            "between memories, not only ones you just created. Symmetric. Kinds: "
+            "related, causal, co-used, part-of. " + _ID_NOTE
         ),
         "inputSchema": {
             "type": "object",
@@ -316,6 +334,9 @@ def handle_tool(name: str, args: dict) -> dict:
     if name == "memory_recall":
         return b.recall(args["query"], int(args.get("k", 6)),
                         int(args.get("full", 3)), scope=args.get("scope", "auto"))
+    if name == "memory_suggest_links":
+        hits = b.suggest_links(args["node_id"], int(args.get("k", 5)))
+        return {"count": len(hits), "candidates": hits}
     if name == "memory_reinforce":
         return b.link(args["src"], args["dst"],
                       args.get("kind", "related"), float(args.get("delta", 0.5)))
