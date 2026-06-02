@@ -120,7 +120,7 @@ def _has_claude() -> bool:
                           capture_output=True).returncode == 0
 
 
-# ── hooks (auto-recall on SessionStart; opt-in auto-capture on SessionEnd) ────
+# ── hooks (auto-recall on SessionStart; opt-in deterministic recall on prompt) ─
 
 def _hook_cmd(script: str, embedder: bool) -> str:
     env = f"CC_MEM_DB={DEFAULT_DB} "
@@ -150,7 +150,7 @@ def _set(hooks: dict, event: str, command: str | None) -> None:
         del hooks[event]
 
 
-def install_hooks(dirs: list[Path], capture: bool, recall: bool) -> None:
+def install_hooks(dirs: list[Path], recall: bool) -> None:
     for d in dirs:
         settings = d / "settings.json"
         try:
@@ -159,18 +159,19 @@ def install_hooks(dirs: list[Path], capture: bool, recall: bool) -> None:
             print(f"  ! {settings} is not valid JSON — skipping"); continue
         hooks = data.setdefault("hooks", {})
         _set(hooks, "SessionStart", _hook_cmd("session_start.py", False))   # always: auto-recall
-        _set(hooks, "SessionEnd", _hook_cmd("session_capture.py", True) if capture else None)
+        # SessionEnd is intentionally NOT installed: it used to spawn a headless
+        # `claude -p` per session, which burned Claude usage. Pass None so re-runs
+        # also SCRUB any previously-installed capture hook from settings.json.
+        _set(hooks, "SessionEnd", None)
         _set(hooks, "UserPromptSubmit", _hook_cmd("prompt_recall.py", True) if recall else None)
         settings.parent.mkdir(parents=True, exist_ok=True)
         settings.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        extras = "+".join(["recall-on-start"] + (["capture"] if capture else [])
-                          + (["prompt-recall"] if recall else []))
+        extras = "+".join(["recall-on-start"] + (["prompt-recall"] if recall else []))
         print(f"  hooks ({extras}) -> {settings}")
-    if not capture:
-        print("  note: --capture adds SessionEnd auto-capture (needs `claude` CLI).")
     if not recall:
         print("  note: --recall adds UserPromptSubmit deterministic auto-recall "
-              "(runs a warm background daemon; semantic search on every prompt).")
+              "(runs a warm background daemon; semantic search on every prompt — "
+              "a local Python process, never a Claude agent).")
 
 
 # ── deps ──────────────────────────────────────────────────────────────────────
@@ -193,8 +194,6 @@ def main():
     ap.add_argument("command", choices=["all", "prompt", "mcp", "deps", "hooks"])
     ap.add_argument("--target", action="append", type=Path,
                     help="explicit CLAUDE.md path for `prompt` (repeatable)")
-    ap.add_argument("--capture", action="store_true",
-                    help="for `hooks`/`all`: also install the SessionEnd auto-capture hook")
     ap.add_argument("--recall", action="store_true",
                     help="for `hooks`/`all`: also install the UserPromptSubmit auto-recall hook")
     args = ap.parse_args()
@@ -208,7 +207,7 @@ def main():
         targets = args.target or prompt_targets()
         sync_prompt(targets)
     if args.command in ("hooks", "all"):
-        print("• hooks"); install_hooks(config_dirs(), capture=args.capture, recall=args.recall)
+        print("• hooks"); install_hooks(config_dirs(), recall=args.recall)
     print("done.")
 
 

@@ -50,9 +50,13 @@ search needed). Opt-in extras:
 - `--recall` — a **UserPromptSubmit** hook that runs a semantic search on *every*
   prompt and injects the top hits before Claude responds (deterministic recall, not
   reliant on Claude remembering to search). Backed by a warm background daemon
-  (`recall_daemon.py`) so it's ~instant after the first prompt.
-- `--capture` — a **SessionEnd** hook that proposes learnings into a review queue
-  (needs the `claude` CLI; spends a small headless call per session).
+  (`recall_daemon.py`) so it's ~instant after the first prompt — a local Python
+  process, never a Claude agent, so it doesn't spend any Claude usage.
+
+> Note: there used to be a `--capture` (SessionEnd) hook that ran a headless
+> `claude -p` to propose learnings each session. It was removed because it burned
+> Claude usage on every session end. Save learnings inline via the `memory_*` MCP
+> tools instead.
 
 **The system prompt lives in the repo** at [`prompt/memory-loop.md`](prompt/memory-loop.md)
 — the single source of truth for how Claude should use the memory (the
@@ -122,9 +126,6 @@ one call), `memory_update` / `memory_delete` (revise, don't duplicate), and
 
 - **Auto-recall (SessionStart hook)** — sessions begin with your standing
   preferences + the project's key memories already in context.
-- **Auto-capture (SessionEnd hook, opt-in)** — proposes learnings into a review
-  queue; you approve/dismiss in the UI's **Pending** tab. Nothing enters long-term
-  memory without a human OK.
 - **Dedup on insert** — `memory_insert` refuses a near-duplicate and returns the
   candidates, steering Claude to `memory_update` in place instead of piling up copies.
 - **Verification-gated writes** — pass `verify="<command>"` to `memory_insert`; it
@@ -216,7 +217,7 @@ python3 test_memory.py     # 30 checks: core, scope, cross-session, MCP stdio
 - `brain.py` — two-tier facade (global + project), dedup + verification gate.
 - `project.py` — git-committed, file-per-node project memory.
 - `runner.py` — runs verification commands.
-- `hooks/` — SessionStart auto-recall + SessionEnd auto-capture scripts.
+- `hooks/` — SessionStart auto-recall + (opt-in) UserPromptSubmit recall scripts.
 - `prompt/memory-loop.md` — the self-learning loop prompt (synced by setup.py).
 - `manage.py` / `webapp/` — Python JSON API + static server for the web app.
 - `ui/` — Vite + React frontend (Table / Search / Graph / Pending).

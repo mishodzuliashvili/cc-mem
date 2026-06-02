@@ -26,9 +26,8 @@ a cluster. If the first hits are promising but thin, **don't stop and don't answ
 from a shallow brief** — follow the thread: `memory_search_neighbors` / `memory_expand`
 to walk linked nodes, `memory_get_many` to pull the cluster, re-search with refined
 terms. Keep drilling until you actually have what the task needs or you've confirmed
-it isn't stored. For broad/expensive digging, **spawn a retrieval subagent**: it walks
-the graph in its own context, distills, and returns only the facts you need — so the
-main session never fills up with raw nodes.
+it isn't stored — but do this inline, in the current session. Recall is cheap; don't
+spin up extra agents for it.
 
 **3. Learn (verified writes only).** When you VERIFY something durable and reusable,
 `memory_insert` it: tight one-line `summary`, short `label`, `links` to related
@@ -101,4 +100,4 @@ Prefer `project` for app-specific facts so they never pollute other projects.
 
 **Standing instruction:** if the user says "remember this", "from now on…",
 corrects a fact, or states a durable preference, persist or update it in cc-mem
-before moving on — even mid-task, and even via a subagent if you're delegating.
+before moving on — even mid-task.

@@ -24,7 +24,7 @@ cd ui && npm run lint         # eslint
 
 # Installer (idempotent). Pieces: deps | mcp | prompt | hooks | all
 python3 setup.py all                 # venv+deps, register MCP, sync prompt, install recall hook
-python3 setup.py hooks --capture     # also install the opt-in SessionEnd auto-capture hook
+python3 setup.py hooks --recall      # also install the opt-in UserPromptSubmit recall hook (local daemon, no Claude agent)
 
 # MCP server (stdio JSON-RPC) — normally launched by Claude Code, not by hand:
 python3 mcp_server.py
@@ -88,8 +88,12 @@ updates survive across processes (e.g. the MCP server writing in a Claude sessio
 **Self-learning loop.**
 - `hooks/session_start.py` (SessionStart) injects preferences + project memories at session start
   — reads DB/files directly, **no embedding**, so keep it fast.
-- `hooks/session_capture.py` (SessionEnd, opt-in) runs a headless `claude -p` to propose learnings
-  into `~/.claude-cc-mem/pending/`, reviewed in the UI's Pending tab (approve → inserts).
+- NOTE: there is intentionally NO SessionEnd auto-capture hook. It used to run a headless
+  `claude -p` per session and burned Claude usage; it was removed. `setup.py hooks` actively
+  SCRUBS any previously-installed capture hook. Don't reintroduce anything that spawns a
+  Claude agent (subagent/`claude -p`) from a hook or the prompt. Save learnings inline via the
+  `memory_*` tools. (The `~/.claude-cc-mem/pending/` review queue + UI Pending tab remain but
+  are no longer auto-fed.)
 - `prompt/memory-loop.md` is the canonical behavior prompt (insert/update/dedup/verify/types),
   synced into `~/.claude/CLAUDE.md` by `setup.py prompt`. Edit that file, not the installed copy.
 - Writes are gated: `memory_insert` refuses near-duplicates (steer to `memory_update`) and, if
